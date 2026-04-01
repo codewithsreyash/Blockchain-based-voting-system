@@ -1,0 +1,55 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d1f39">
+    <title>Admin Portal | Decentralized Voting</title>
+
+    <link rel="stylesheet" type="text/css" href="../css/admin.css">
+    
+  </head>
+  <body class="page-admin">
+    <header id="head" class="text-center page-header">
+      <h1>Decentralized Voting Using Ethereum Blockchain</h1>
+      <p class="subtitle">Election Administration Dashboard</p>
+    </header>
+
+    <main class="page-main">
+      <section class="container">
+       <legend>Add Candidate</legend>  
+       <table class="table text-center form-table"> 
+                <tbody>
+                  <tr>
+                    <th scope="row"><label for="name">Name</label></th>
+                    <td><input id="name" type="text" name="name" placeholder="Candidate name" autocomplete="off"></td>  
+                    <th scope="row"><label for="party">Party</label></th>
+                    <td><input id="party" type="text" name="party" placeholder="Candidate party"></td> 
+                  </tr>
+                </tbody>
+        </table> 
+        <input id="addCandidate" type="submit" name="submit" value="Add Candidate">
+      </section>
+
+      <section class="container">
+       <legend>Define Voting Dates</legend>  
+       <table class="table text-center form-table"> 
+                <tbody>
+                  <tr>              
+                    <th scope="row"><label for="startDate">Start Date</label></th>
+                    <td><input id="startDate" type="date"></td>
+                    <th scope="row"><label for="endDate">End Date</label></th>
+                    <td><input id="endDate" type="date"></td>
+                  </tr>
+                </tbody>
+        </table> 
+        <input id="addDate" type="submit" name="submit" value="Define Dates">
+      </section>
+    </main>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.0/umd/popper.min.js"></script>
+  <script src="../dist/app.bundle.js" type="module"></script>
+  </body>
+</html>

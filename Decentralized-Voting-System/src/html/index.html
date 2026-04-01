@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d1f39">
+    <title>Voting Page | Decentralized Voting</title>
+
+    <link rel="stylesheet" type="text/css" href="../css/index.css">
+    
+  </head>
+  <body class="page-voter">
+    <header id="head" class="text-center page-header">
+      <h1>Decentralized Voting Using Ethereum Blockchain</h1>
+      <h2>Welcome to Voting</h2> 
+      <p class="voting-dates">Voting Dates: <span id="dates"></span></p>
+    </header>
+
+    <main class="page-main">
+      <section id="candidate" class="container"> 
+        <legend>Candidates</legend>
+        <div class="table-wrap">
+          <table class="table text-center">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Party</th>
+                <th>Total Vote</th>
+              </tr>
+            </thead>
+            <tbody id="boxCandidate"></tbody>
+          </table>
+        </div>
+        <div id="vote">
+          <p>Please select one candidate and click the button to cast your vote.</p>
+          <button id="voteButton" class="btn btn-primary" onclick="App.vote()" disabled>Submit Vote</button>
+          <div id="msg"></div>
+          <div id="vote-box"></div>
+        </div>
+      </section>
+  
+      <section id="account" class="account-panel">
+        <p id="accountAddress" class="text-center"></p>
+      </section>
+    </main>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.0/umd/popper.min.js"></script>
+  <script src="../dist/app.bundle.js" type="module"></script>
+  </body>
+</html>

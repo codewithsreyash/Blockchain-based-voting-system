@@ -1,0 +1,177 @@
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500;600&display=swap");
+
+:root {
+  --bg-deep: #081425;
+  --panel: rgba(8, 21, 40, 0.56);
+  --panel-edge: rgba(255, 255, 255, 0.2);
+  --text-main: #eef5ff;
+  --text-dim: #bfd0ec;
+  --accent: #00c2a8;
+  --accent-2: #1a92ff;
+  --danger: #ff7f70;
+  --shadow: 0 22px 45px rgba(2, 8, 20, 0.45);
+  --font-heading: "Rajdhani", sans-serif;
+  --font-body: "Space Grotesk", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.page-login {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 28px 16px;
+  font-family: var(--font-body);
+  color: var(--text-main);
+  background:
+    radial-gradient(1200px 500px at -10% 20%, rgba(0, 194, 168, 0.24), transparent 60%),
+    radial-gradient(800px 440px at 110% 80%, rgba(26, 146, 255, 0.2), transparent 62%),
+    linear-gradient(130deg, rgba(5, 14, 28, 0.92), rgba(6, 18, 35, 0.86)),
+    url("../assets/eth5.jpg") center/cover fixed no-repeat;
+}
+
+body.page-login::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 70px 70px;
+  opacity: 0.15;
+}
+
+.page-header {
+  text-align: center;
+  animation: rise 0.7s ease both;
+}
+
+.page-header h1 {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+
+.subtitle {
+  margin: 10px auto 0;
+  color: var(--text-dim);
+  max-width: 720px;
+  font-size: 1rem;
+}
+
+.container {
+  width: min(520px, 94vw);
+  padding: 34px;
+  border-radius: 22px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  animation: rise 0.9s ease both;
+  position: relative;
+  overflow: hidden;
+}
+
+.container::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.container h2 {
+  margin: 0 0 20px;
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  letter-spacing: 0.03em;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #08172d;
+  font: inherit;
+  padding: 12px 14px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 4px rgba(26, 146, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+button {
+  width: 100%;
+  margin-top: 8px;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 18px;
+  font: 700 1rem var(--font-heading);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f8fcff;
+  background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  box-shadow: 0 12px 28px rgba(0, 194, 168, 0.28);
+}
+
+button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.04);
+  box-shadow: 0 15px 30px rgba(26, 146, 255, 0.3);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 24px;
+  }
+
+  .subtitle {
+    font-size: 0.92rem;
+  }
+}
