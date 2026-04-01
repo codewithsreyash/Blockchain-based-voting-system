@@ -1,0 +1,105 @@
+"use client";
+
+import type { AuthResponse, Election, ElectionResults, PendingVerificationResponse, User } from "./types";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
+const TOKEN_STORAGE_KEY = "dva-token";
+
+export function getAuthToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export function setAuthToken(token: string) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  }
+}
+
+export function clearAuthToken() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const token = getAuthToken();
+
+  headers.set("Content-Type", "application/json");
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.message || "Request failed");
+  }
+
+  return payload as T;
+}
+
+export const api = {
+  signup: (body: Record<string, unknown>) =>
+    request<AuthResponse>("/auth/signup", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  login: (body: { email: string; password: string }) =>
+    request<AuthResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  me: async () => {
+    const response = await request<{ user: User }>("/auth/me");
+    return response.user;
+  },
+  submitWallet: async (walletAddress: string) => {
+    const response = await request<{ user: User; message: string }>("/users/me/wallet", {
+      method: "POST",
+      body: JSON.stringify({ walletAddress }),
+    });
+    return response;
+  },
+  getPendingVerifications: () => request<PendingVerificationResponse>("/admin/verifications"),
+  verifyUser: (userId: string) =>
+    request<{ user: User; transactionHash: string }>(`/admin/verifications/${userId}`, {
+      method: "POST",
+    }),
+  verifyAll: (role?: "student" | "teacher") =>
+    request<{ verifiedCount: number; transactionHashes: string[] }>("/admin/verifications/bulk", {
+      method: "POST",
+      body: JSON.stringify(role ? { role } : {}),
+    }),
+  createElection: (body: {
+    title: string;
+    description: string;
+    eligibleVoters: "students" | "teachers" | "both";
+    candidateNames: string[];
+    startTime: string;
+    endTime: string;
+  }) =>
+    request<{ electionId: number | null; transactionHash: string }>("/elections", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deactivateElection: (electionId: number) =>
+    request<{ electionId: number; transactionHash: string; message: string }>(`/elections/${electionId}/deactivate`, {
+      method: "PATCH",
+    }),
+  getElectionResults: (electionId: number) => request<ElectionResults>(`/elections/${electionId}/results`),
+  listElections: async () => {
+    const response = await request<{ elections: Election[]; message?: string }>("/elections");
+    return response;
+  },
+};

@@ -1,19 +1,24 @@
 {
-  "name": "decentralized-voting",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "decentralized-voting-system",
+  "version": "2.0.0",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "contracts:compile": "truffle compile",
+    "contracts:migrate": "truffle migrate",
+    "contracts:migrate:amoy": "truffle migrate --network polygonAmoy",
+    "contracts:migrate:reset": "truffle migrate --reset",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:start": "npm --prefix backend run start",
+    "backend:seed-admin": "npm --prefix backend run seed:admin",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:start": "npm --prefix frontend run start"
   },
-  "author": "",
-  "license": "UNLICENSED",
   "dependencies": {
-    "@truffle/contract": "^4.6.18",
-    "browserify": "^17.0.1",
-    "dotenv": "^16.0.3",
-    "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.0",
-    "web3": "^1.9.0"
+    "@truffle/hdwallet-provider": "^2.1.15",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "truffle": "^5.11.5"
   }
 }

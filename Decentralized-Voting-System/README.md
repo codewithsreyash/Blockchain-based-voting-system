@@ -1,147 +1,242 @@
-# Decentralized-Voting-System-Using-Ethereum-Blockchain
+# Decentralized Voting System
 
-#### The Decentralized Voting System using Ethereum Blockchain is a secure and transparent solution for conducting elections. Leveraging Ethereum's blockchain technology, this system ensures tamper-proof voting records, enabling users to cast their votes remotely while maintaining anonymity and preventing fraud. Explore this innovative project for trustworthy and decentralized voting processes.
-#### PS: This project is not maintained anymore.
+Production-oriented campus voting architecture with:
 
-## Features
--  Implements JWT for secure voter authentication and authorization.
--  Utilizes Ethereum blockchain for tamper-proof and transparent voting records.
--  Removes the need for intermediaries, ensuring a trustless voting process.
--  Admin panel to manage candidates, set voting dates, and monitor results.
--  Intuitive UI for voters to cast votes and view candidate information.
+- Solidity smart contract for role-aware elections and verified voter whitelisting
+- Express + MongoDB backend for auth, wallet submission, and admin verification
+- Next.js + Wagmi frontend for signup, admin review, wallet linking, and on-chain voting
 
-## Requirements
-- Node.js (version – 18.14.0)
-- Metamask
-- Python (version – 3.9)
-- FastAPI
-- MySQL Database (port – 3306)
+## What Changed
 
-## Screenshots
+This refactor adds the missing production pieces the original demo did not have:
 
-## Installation
+- Three roles: `admin`, `student`, `teacher`
+- Role-specific signup fields
+- Wallet submission flow after login
+- Admin verification dashboard with per-user and bulk whitelist actions
+- Election creation with `students`, `teachers`, or `both` eligibility
+- Frontend election filtering by verified user role
+- Smart contract guardrails that reject votes from the wrong role
+- Batched admin verification to reduce out-of-gas risk
 
-1. Open a terminal.
+## Project Layout
 
-2. Clone the repository by using the command
-        
-        git clone https://github.com/codewithsreyash/Decentralised-Voting-App.git
+```text
+contracts/                 Solidity contract source
+migrations/                Truffle deployment scripts
+backend/                   Express API, Mongo models, contract signer integration
+frontend/                  Next.js app with Wagmi wallet integration
+src/, Database_API/        Legacy demo files kept for reference
+```
 
-3. Download and install [Ganache](https://trufflesuite.com/ganache/).
+## Smart Contract Highlights
 
-4. Create a workspace named <b>developement</b>, in the truffle projects section add `truffle-config.js` by clicking `ADD PROJECT` button.
+`contracts/Voting.sol` now includes:
 
-5. Download [Metamask](https://metamask.io/download/) extension for the browser.
+- `Role` enum: `None`, `Admin`, `Student`, `Teacher`
+- Verified voter registry: `mapping(address => Voter) public voters`
+- Role-aware elections with:
+  - `studentsAllowed`
+  - `teachersAllowed`
+- `verifyVoter()` for single wallet verification
+- `verifyVoters()` for batched verification
+- `vote(electionId, candidateId)` guardrails:
+  - wallet must be verified
+  - voter must be `Student` or `Teacher`
+  - voter role must match election eligibility
+  - voter can vote only once per election
 
-6. Now create wallet (if you don't have one), then import accounts from ganache.
+## Backend API
 
-7. Add network to the metamask. ( Network name - Localhost 7575, RPC URl - http://localhost:7545, Chain ID - 1337, Currency symbol - ETH)
+Base URL: `http://localhost:4000/api`
 
-8. Open MySQL and create database named <b>voter_db</b>. (DON'T USE XAMPP)
+Main routes:
 
-9. In the database created, create new table named <b>voters</b> in the given format and add some values.
+- `POST /auth/signup`
+- `POST /auth/login`
+- `GET /auth/me`
+- `POST /users/me/wallet`
+- `GET /admin/verifications`
+- `POST /admin/verifications/:userId`
+- `POST /admin/verifications/bulk`
+- `POST /elections`
+- `GET /elections`
+- `GET /elections/:electionId`
 
-           CREATE TABLE voters (
-           voter_id VARCHAR(36) PRIMARY KEY NOT NULL,
-           role ENUM('admin', 'user') NOT NULL,
-           password VARCHAR(255) NOT NULL
-           );
-   <br>
+Backend responsibilities:
 
-        +--------------------------------------+-------+-----------+
-        | voter_id                             | role  | password  |
-        +--------------------------------------+-------+-----------+
-        |                                      |       |           |
-        +--------------------------------------+-------+-----------+
+- store Web2 identity and role profile data
+- mark submitted wallets as `pending`
+- use the backend admin signer to whitelist approved addresses on-chain
+- fail fast on startup if the backend signer is not the deployed contract owner
+- batch `Verify All` calls safely using `VERIFICATION_BATCH_SIZE`
+- filter elections for verified students and teachers before rendering
 
-12. Install truffle globally
-    
-        npm install -g truffle
+## Frontend Pages
 
-14. Go to the root directory of repo and install node modules
+Next.js pages were added under `frontend/src/app`:
 
-        npm install
+- `/login`
+- `/signup`
+- `/wallet`
+- `/admin/verifications`
+- `/admin/elections/new`
+- `/elections`
 
-15. Install python dependencies
+Frontend responsibilities:
 
-        pip install fastapi mysql-connector-python pydantic python-dotenv uvicorn uvicorn[standard] PyJWT
+- collect role-specific signup data
+- authenticate against backend JWT
+- connect MetaMask using Wagmi
+- submit the connected wallet to the backend
+- let admins verify pending users
+- let admins create role-restricted elections
+- let verified users vote directly on-chain
 
-## Usage
+## Setup
 
-#### Note: Update the database credentials in the `./Database_API/.env` file.
+### 1. Install dependencies
 
-1. Open terminal at the project directory
+```bash
+npm install
+npm --prefix backend install
+npm --prefix frontend install
+```
 
-2. Open Ganache and it's <b>development</b> workspace.
+### 2. Configure environment files
 
-3. open terminal in project's root directory and run the command
+Copy these templates:
 
-        truffle console
-   then compile the smart contracts with command
+```powershell
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.local.example frontend\.env.local
+```
 
-        compile
-   exit the truffle console
+Important:
 
-5. Bundle app.js with browserify
-    
-        browserify ./src/js/app.js -o ./src/dist/app.bundle.js
+- set `ADMIN_PRIVATE_KEY` in `backend/.env`
+- set `INITIAL_ADMIN_ADDRESS` to the address for that same private key
+- the migration script uses that wallet address as the contract owner
+- the backend refuses to start if the deployed contract owner does not match `ADMIN_PRIVATE_KEY`
 
-2. Start the node server server
-    
-        node index.js
+### 3. Compile and deploy the contract
 
-3. Navigate to `Database_API` folder in another terminal
-    
-        cd Database_API
-    then start the database server by following command
+```bash
+npm run contracts:compile
+npm run contracts:migrate:reset
+```
 
-        uvicorn main:app --reload --host 127.0.0.1
+After deployment, copy the deployed contract address into:
 
-4. In a new terminal migrate the truffle contract to local blockchain
-    
-        truffle migrate
+- `backend/.env` as `CONTRACT_ADDRESS`
+- `frontend/.env.local` as `NEXT_PUBLIC_CONTRACT_ADDRESS`
 
-You're all set! The Voting app should be up and running now at http://localhost:8080/.<br>
+### 4. Seed the admin account
 
+Set:
 
-## Code Structure
+- `ADMIN_SEED_NAME`
+- `ADMIN_SEED_EMAIL`
+- `ADMIN_SEED_PASSWORD`
 
-    ├── blockchain-voting-dapp            # Root directory of the project.
-        ├── build                         # Directory containing compiled contract artifacts.
-        |   └── contracts                 
-        |       ├── Migrations.json       
-        |       └── Voting.json           
-        ├── contracts                     # Directory containing smart contract source code.
-        |   ├── 2_deploy_contracts.js     
-        |   ├── Migrations.sol            
-        |   └── Voting.sol                
-        ├── Database_API                  # API code for database communication.
-        |   └── main.py                   
-        ├── migrations                    # Ethereum contract deployment scripts.
-        |   └── 1_initial_migration.js    
-        ├── node_modules                  # Node.js modules and dependencies.
-        ├── public                        # Public assets like favicon.
-        |   └── favicon.ico               
-        ├── src                           
-        |   ├── assets                    # Project images.
-        |   |   └── eth5.jpg              
-        |   ├── css                       # CSS stylesheets.
-        |   |   ├── admin.css             
-        |   |   ├── index.css             
-        |   |   └── login.css             
-        |   ├── dist                      # Compiled JavaScript bundles.
-        |   |   ├── app.bundle.js         
-        |   |   └── login.bundle.js       
-        |   ├── html                      # HTML templates.
-        |   |   ├── admin.html            
-        |   |   ├── index.html            
-        |   |   └── login.html            
-        |   └── js                        # JavaScript logic files.
-        |       ├── app.js                
-        |       └── login.js              
-        ├── index.js                      # Main entry point for Node.js application.
-        ├── package.json                  # Node.js package configuration.
-        ├── package-lock.json             # Lockfile for package dependencies.
-        ├── README.md                     # Project documentation.
-        └── truffle-config.js                    # Truffle configuration file.
+Then run:
 
+```bash
+npm run backend:seed-admin
+```
+
+### 5. Start the services
+
+```bash
+npm run backend:dev
+npm run frontend:dev
+```
+
+## Production Environment Checklist
+
+### Backend `.env`
+
+Required:
+
+- `PORT`
+- `NODE_ENV`
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `JWT_EXPIRES_IN`
+- `CORS_ORIGIN`
+- `RPC_URL`
+- `CHAIN_ID`
+- `CONTRACT_ADDRESS`
+- `ADMIN_PRIVATE_KEY`
+- `INITIAL_ADMIN_ADDRESS`
+- `VERIFICATION_BATCH_SIZE`
+
+Recommended:
+
+- `ADMIN_SEED_NAME`
+- `ADMIN_SEED_EMAIL`
+- `ADMIN_SEED_PASSWORD`
+
+Production notes:
+
+- use a managed MongoDB deployment with IP allowlists
+- use a dedicated backend signer wallet, never a personal wallet
+- keep `ADMIN_PRIVATE_KEY` in a secrets manager, not in source control
+- keep `VERIFICATION_BATCH_SIZE` at `50` or lower unless you benchmark larger batches
+- rotate `JWT_SECRET` and use a long random value
+
+### Frontend `.env.local`
+
+Required:
+
+- `NEXT_PUBLIC_API_BASE_URL`
+- `NEXT_PUBLIC_CONTRACT_ADDRESS`
+- `NEXT_PUBLIC_CHAIN_ID`
+- `NEXT_PUBLIC_RPC_URL`
+
+## Recommended Network Strategy
+
+Best low-cost choice for this product:
+
+- Testnet: `Polygon Amoy`
+- Mainnet: `Polygon PoS`
+
+Why:
+
+- lowest fees for student and teacher wallets
+- easy MetaMask support
+- broad RPC/provider support
+- practical for frequent admin whitelist writes and campus-scale vote volume
+
+If you want stronger Ethereum alignment and are okay with slightly higher fees:
+
+- Testnet: `Arbitrum Sepolia`
+- Mainnet: `Arbitrum One`
+
+Important:
+
+- this implementation uses direct wallet voting, so end users still sign and pay a small gas fee
+- if you want near-zero user cost, add a relayer or meta-transaction layer later
+
+## Bulk Verification and Gas Safety
+
+The contract exposes:
+
+- `MAX_BATCH_VERIFY = 100`
+- `MAX_CANDIDATES_PER_ELECTION = 50`
+
+The backend additionally chunks bulk verification requests using:
+
+- `VERIFICATION_BATCH_SIZE`
+
+Recommended rule:
+
+- keep backend batch size at `25-50` for predictable gas use
+- do not send unlimited arrays from the frontend
+- prefer sequential backend chunking for `Verify All`
+
+## Notes
+
+- The original static demo files are still in the repo for reference.
+- The new production path is the `backend/ + frontend/ + contracts/` stack.
+- You should run contract tests and API integration tests before deploying to a real college environment.
