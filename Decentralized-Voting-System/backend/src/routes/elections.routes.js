@@ -15,6 +15,17 @@ const {
 
 const router = express.Router();
 
+const absoluteDateTimePattern = /(Z|[+-]\d{2}:\d{2})$/i;
+
+function parseAbsoluteDateTime(value) {
+  if (typeof value !== "string" || !absoluteDateTimePattern.test(value)) {
+    return null;
+  }
+
+  const parsedTime = Date.parse(value);
+  return Number.isFinite(parsedTime) ? parsedTime : null;
+}
+
 const createElectionSchema = z
   .object({
     title: z.string().trim().min(3, "Title must be at least 3 characters long"),
@@ -28,28 +39,26 @@ const createElectionSchema = z
     endTime: z.string().min(1, "End time is required"),
   })
   .superRefine((value, ctx) => {
-    const startDate = new Date(value.startTime);
-    const endDate = new Date(value.endTime);
-    const startTime = startDate.getTime();
-    const endTime = endDate.getTime();
+    const startTime = parseAbsoluteDateTime(value.startTime);
+    const endTime = parseAbsoluteDateTime(value.endTime);
 
-    if (!Number.isFinite(startTime)) {
+    if (startTime === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["startTime"],
-        message: "Start time must be a valid date and time",
+        message: "Start time must be a valid ISO date and time with a timezone offset",
       });
     }
 
-    if (!Number.isFinite(endTime)) {
+    if (endTime === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["endTime"],
-        message: "End time must be a valid date and time",
+        message: "End time must be a valid ISO date and time with a timezone offset",
       });
     }
 
-    if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+    if (startTime === null || endTime === null) {
       return;
     }
 
@@ -123,8 +132,15 @@ router.post(
     const network = resolveContractNetwork(req.query.network);
     const payload = createElectionSchema.parse(req.body);
     const { studentsAllowed, teachersAllowed } = getEligibilityFlags(payload.eligibleVoters);
-    const startTime = Math.floor(new Date(payload.startTime).getTime() / 1000);
-    const endTime = Math.floor(new Date(payload.endTime).getTime() / 1000);
+    const startTimeMs = parseAbsoluteDateTime(payload.startTime);
+    const endTimeMs = parseAbsoluteDateTime(payload.endTime);
+
+    if (startTimeMs === null || endTimeMs === null) {
+      throw createHttpError(400, "Election times must be absolute ISO timestamps with timezone offsets");
+    }
+
+    const startTime = Math.floor(startTimeMs / 1000);
+    const endTime = Math.floor(endTimeMs / 1000);
 
     const { receipt, gasLimit } = await sendAdminTransaction(
       "createElection",

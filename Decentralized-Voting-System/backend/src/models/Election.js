@@ -1,5 +1,18 @@
 const mongoose = require("mongoose");
 
+function normalizeElectionDate(value) {
+  if (value === null || value === undefined || value === "") {
+    return value;
+  }
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(parsedDate.getTime()) ? parsedDate : value;
+}
+
+function isValidStoredElectionDate(value) {
+  return value instanceof Date && Number.isFinite(value.getTime());
+}
+
 const electionSchema = new mongoose.Schema(
   {
     network: {
@@ -32,10 +45,20 @@ const electionSchema = new mongoose.Schema(
     startTime: {
       type: Date,
       required: true,
+      set: normalizeElectionDate,
+      validate: {
+        validator: isValidStoredElectionDate,
+        message: "Start time must be stored as an absolute UTC timestamp",
+      },
     },
     endTime: {
       type: Date,
       required: true,
+      set: normalizeElectionDate,
+      validate: {
+        validator: isValidStoredElectionDate,
+        message: "End time must be stored as an absolute UTC timestamp",
+      },
     },
     isActive: {
       type: Boolean,

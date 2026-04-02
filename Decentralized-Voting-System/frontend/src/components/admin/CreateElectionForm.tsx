@@ -8,6 +8,16 @@ const emptyCandidate = "";
 const minimumTitleLength = 3;
 const minimumDescriptionLength = 10;
 
+function toAbsoluteIsoString(localDateTime: string) {
+  const parsedDate = new Date(localDateTime);
+
+  if (!Number.isFinite(parsedDate.getTime())) {
+    return null;
+  }
+
+  return parsedDate.toISOString();
+}
+
 function getCreateElectionValidationMessages({
   title,
   description,
@@ -116,6 +126,8 @@ export function CreateElectionForm() {
 
     try {
       const cleanCandidateNames = candidateNames.map((candidate) => candidate.trim()).filter(Boolean);
+      const startTimeIso = toAbsoluteIsoString(startTime);
+      const endTimeIso = toAbsoluteIsoString(endTime);
       const validationMessages = getCreateElectionValidationMessages({
         title,
         description,
@@ -134,8 +146,8 @@ export function CreateElectionForm() {
         description: description.trim(),
         eligibleVoters,
         candidateNames: cleanCandidateNames,
-        startTime,
-        endTime,
+        startTime: startTimeIso ?? startTime,
+        endTime: endTimeIso ?? endTime,
       });
 
       setMessage(

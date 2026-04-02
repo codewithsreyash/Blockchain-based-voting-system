@@ -36,6 +36,10 @@ const votingStatusAbi = [
   },
 ] as const;
 
+function getCurrentUnixTime() {
+  return Math.floor(Date.now() / 1000);
+}
+
 function toReadableDate(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString();
 }
@@ -97,7 +101,7 @@ export function ElectionDashboard() {
 
   useEffect(() => {
     setIsMounted(true);
-    setCurrentUnixTime(Math.floor(Date.now() / 1000));
+    setCurrentUnixTime(getCurrentUnixTime());
   }, []);
 
   useEffect(() => {
@@ -142,7 +146,7 @@ export function ElectionDashboard() {
     }
 
     const timer = window.setInterval(() => {
-      setCurrentUnixTime(Math.floor(Date.now() / 1000));
+      setCurrentUnixTime(getCurrentUnixTime());
     }, 1000);
 
     return () => {
@@ -229,7 +233,7 @@ export function ElectionDashboard() {
       return;
     }
 
-    if (!isElectionLive(election, Date.now() / 1000)) {
+    if (!isElectionLive(election, getCurrentUnixTime())) {
       setError("Voting is not currently open for this election");
       return;
     }
