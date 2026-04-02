@@ -1,0 +1,8 @@
+{
+  "name": "render-backend-bridge",
+  "private": true,
+  "scripts": {
+    "build": "cd Decentralized-Voting-System/backend && npm install",
+    "start": "cd Decentralized-Voting-System/backend && npm start"
+  }
+}
