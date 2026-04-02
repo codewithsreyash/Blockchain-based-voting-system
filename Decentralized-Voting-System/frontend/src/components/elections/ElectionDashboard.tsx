@@ -36,6 +36,34 @@ const votingStatusAbi = [
   },
 ] as const;
 
+type BrowserWalletProvider = {
+  request: (request: {
+    method: string;
+    params?: unknown[] | undefined;
+  }) => Promise<unknown>;
+};
+
+type ChainSwitchErrorLike = {
+  code?: number;
+  data?: {
+    originalError?: {
+      code?: number;
+    };
+  };
+};
+
+type ManualAddEthereumChainParameter = {
+  blockExplorerUrls: string[] | null;
+  chainId: `0x${string}`;
+  chainName: string;
+  nativeCurrency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rpcUrls: [string, ...string[]];
+};
+
 function getCurrentUnixTime() {
   return Math.floor(Date.now() / 1000);
 }
@@ -64,6 +92,32 @@ function isElectionLive(election: Election, currentUnixTime: number) {
   return getElectionStateAtTime(election, currentUnixTime) === "Live";
 }
 
+function getBrowserWalletProvider() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return (window as Window & { ethereum?: BrowserWalletProvider }).ethereum ?? null;
+}
+
+function getHexChainId(chainId: number): `0x${string}` {
+  return `0x${chainId.toString(16)}`;
+}
+
+function isMissingChainError(error: unknown) {
+  const errorWithCode = error as ChainSwitchErrorLike | undefined;
+  return errorWithCode?.code === 4902 || errorWithCode?.data?.originalError?.code === 4902;
+}
+
+function isLocalRpcUrl(rpcUrl: string) {
+  try {
+    const hostname = new URL(rpcUrl).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 export function ElectionDashboard() {
   const { address, isConnected } = useAccount();
   const connectedChainId = useChainId();
@@ -84,7 +138,8 @@ export function ElectionDashboard() {
   const [alreadyVotedByElection, setAlreadyVotedByElection] = useState<Record<number, boolean>>({});
 
   const contractAddress = activeNetwork.contractAddress as `0x${string}` | null;
-  const targetChainId = chainByAppNetwork[selectedNetwork].id as 80002 | 31337;
+  const targetChain = chainByAppNetwork[selectedNetwork];
+  const targetChainId = targetChain.id as 80002 | 31337;
   const walletBusy = isPending || isSwitchingChain;
   const availableConnectors = useMemo(() => connectors.filter((connector) => connector.id !== "mock"), [connectors]);
 
@@ -214,6 +269,58 @@ export function ElectionDashboard() {
 
   async function ensureWalletOnSelectedNetwork() {
     if (connectedChainId === targetChainId) {
+      return;
+    }
+
+    if (selectedNetwork === "local") {
+      const provider = getBrowserWalletProvider();
+
+      if (!provider) {
+        throw new Error("Demo Mode network switching requires a browser wallet that exposes window.ethereum.");
+      }
+
+      const publicDemoRpcUrl = activeNetwork.rpcUrl.trim();
+      if (!publicDemoRpcUrl) {
+        throw new Error("Demo Mode is missing the public RPC URL from the backend.");
+      }
+
+      if (isLocalRpcUrl(publicDemoRpcUrl)) {
+        throw new Error(
+          `Demo Mode RPC is misconfigured: ${publicDemoRpcUrl}. Mobile wallets must use the public Render RPC bridge instead of localhost.`
+        );
+      }
+
+      const chainId = getHexChainId(targetChainId);
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId }],
+        });
+        return;
+      } catch (switchError) {
+        if (!isMissingChainError(switchError)) {
+          throw switchError;
+        }
+      }
+
+      const addChainParameter: ManualAddEthereumChainParameter = {
+        blockExplorerUrls: activeNetwork.blockExplorerUrl ? [activeNetwork.blockExplorerUrl] : null,
+        chainId,
+        chainName: targetChain.name,
+        nativeCurrency: targetChain.nativeCurrency,
+        rpcUrls: [publicDemoRpcUrl],
+      };
+
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [addChainParameter],
+      });
+
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId }],
+      });
       return;
     }
 

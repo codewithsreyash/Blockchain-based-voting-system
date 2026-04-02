@@ -56,6 +56,7 @@ export function getFallbackNetworkStatus(): NetworkStatusResponse {
         chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002),
         contractAddress: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || null,
         rpcUrl: process.env.NEXT_PUBLIC_RPC_URL?.trim() || "",
+        blockExplorerUrl: "https://amoy.polygonscan.com",
       },
       local: {
         key: "local",
@@ -64,6 +65,7 @@ export function getFallbackNetworkStatus(): NetworkStatusResponse {
         chainId: 31337,
         contractAddress: null,
         rpcUrl: getDemoRpcUrl(),
+        blockExplorerUrl: null,
         note: "Demo mode uses the backend's embedded Hardhat chain and free demo ETH.",
       },
     },

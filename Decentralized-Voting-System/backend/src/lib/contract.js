@@ -544,6 +544,7 @@ function getNetworkCatalog(baseUrl) {
         chainId: amoyContext?.chainId ?? chainId,
         contractAddress: amoyContext?.contractAddress ?? contractAddress,
         rpcUrl: amoyContext?.rpcUrl ?? rpcUrl,
+        blockExplorerUrl: "https://amoy.polygonscan.com",
       },
       [NETWORK_KEYS.LOCAL]: {
         key: NETWORK_KEYS.LOCAL,
@@ -552,6 +553,7 @@ function getNetworkCatalog(baseUrl) {
         chainId: localContext?.chainId ?? localDemoChainId,
         contractAddress: localContext?.contractAddress ?? null,
         rpcUrl: getPublicDemoRpcUrl(baseUrl),
+        blockExplorerUrl: null,
         note: "Demo mode runs on an embedded Hardhat node and auto-funds verified wallets with free ETH.",
       },
     },

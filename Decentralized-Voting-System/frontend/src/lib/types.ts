@@ -10,6 +10,7 @@ export interface NetworkDetails {
   chainId: number;
   contractAddress: string | null;
   rpcUrl: string;
+  blockExplorerUrl: string | null;
   note?: string;
 }
 
