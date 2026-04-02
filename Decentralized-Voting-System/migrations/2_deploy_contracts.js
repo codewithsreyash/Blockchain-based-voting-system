@@ -17,5 +17,5 @@ module.exports = async function (deployer, network, accounts) {
   const initialAdmin = configuredAdminAddress || accounts[0];
 
   console.log(`Deploying Voting with initial admin ${initialAdmin}`);
-  await deployer.deploy(Voting, initialAdmin);
+  await deployer.deploy(Voting, initialAdmin, { gas: 4_000_000 });
 };
