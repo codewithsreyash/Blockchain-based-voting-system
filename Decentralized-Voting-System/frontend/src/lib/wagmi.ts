@@ -3,14 +3,26 @@ import { createConfig, http } from "wagmi";
 import { injected } from "@wagmi/core";
 import { walletConnect } from "@wagmi/connectors";
 import { polygonAmoy } from "wagmi/chains";
-import { DEMO_HARDHAT_CHAIN_ID, DEMO_HARDHAT_NETWORK_NAME, resolvePublicDemoRpcUrl } from "./network";
+import {
+  DEMO_HARDHAT_CHAIN_ID,
+  DEMO_HARDHAT_NETWORK_NAME,
+  getConfiguredApiBaseUrl,
+  getDemoRpcUrl,
+  resolvePublicDemoRpcUrl,
+} from "./network";
 import type { AppNetwork } from "./types";
 
 const configuredAmoyRpcUrl = process.env.NEXT_PUBLIC_RPC_URL?.trim();
-const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
-const demoRpcUrl = resolvePublicDemoRpcUrl();
+const demoRpcUrl = resolvePublicDemoRpcUrl(getDemoRpcUrl());
+const configuredApiBaseUrl = (() => {
+  try {
+    return getConfiguredApiBaseUrl();
+  } catch {
+    return undefined;
+  }
+})();
 
 function getOrigin(url: string | undefined) {
   if (!url) {

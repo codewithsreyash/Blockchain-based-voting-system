@@ -6,6 +6,8 @@ export const DEFAULT_APP_NETWORK: AppNetwork = "amoy";
 export const DEMO_HARDHAT_CHAIN_ID = 31337;
 export const DEMO_HARDHAT_NETWORK_NAME = "Demo Hardhat";
 const NETWORK_STORAGE_KEY = "dva-selected-network";
+const configuredApiBaseUrl =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim() || "";
 
 export function normalizeAppNetwork(value: string | null | undefined): AppNetwork {
   return value === "local" ? "local" : DEFAULT_APP_NETWORK;
@@ -25,26 +27,42 @@ export function persistAppNetworkSelection(network: AppNetwork) {
   }
 }
 
-function getApiOrigin() {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-
-  if (!apiBaseUrl) {
+function parseConfiguredApiBaseUrl() {
+  if (!configuredApiBaseUrl) {
     throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
   }
 
-  let parsedUrl: URL;
-
   try {
-    parsedUrl = new URL(apiBaseUrl);
+    return new URL(configuredApiBaseUrl);
   } catch {
     throw new Error("Invalid NEXT_PUBLIC_API_BASE_URL");
   }
+}
 
-  return parsedUrl.origin;
+export function getConfiguredApiBaseUrl() {
+  const parsedUrl = parseConfiguredApiBaseUrl();
+  const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
+
+  if (!normalizedPathname || normalizedPathname === "/") {
+    parsedUrl.pathname = "/api";
+  } else if (!normalizedPathname.endsWith("/api")) {
+    parsedUrl.pathname = `${normalizedPathname}/api`;
+  } else {
+    parsedUrl.pathname = normalizedPathname;
+  }
+
+  return parsedUrl.toString().replace(/\/+$/, "");
+}
+
+export function getConfiguredBackendBaseUrl() {
+  const parsedUrl = new URL(getConfiguredApiBaseUrl());
+  const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
+  parsedUrl.pathname = normalizedPathname.endsWith("/api") ? normalizedPathname.slice(0, -4) || "/" : normalizedPathname || "/";
+  return parsedUrl.toString().replace(/\/+$/, "");
 }
 
 export function getDemoRpcUrl() {
-  return `${getApiOrigin()}/rpc/local`;
+  return `${getConfiguredBackendBaseUrl()}/rpc/local`;
 }
 
 export function isLocalRpcUrl(rpcUrl: string) {

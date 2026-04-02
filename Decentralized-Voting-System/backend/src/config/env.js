@@ -15,6 +15,14 @@ function parseOrigins(value) {
     .filter(Boolean);
 }
 
+function normalizeOrigin(origin) {
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return origin.replace(/\/+$/, "");
+  }
+}
+
 const requiredVariables = [
   "MONGODB_URI",
   "JWT_SECRET",
@@ -33,8 +41,8 @@ const nodeEnv = process.env.NODE_ENV || "development";
 const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "";
 const allowedCorsOrigins = Array.from(
   new Set([
-    ...parseOrigins(frontendUrl),
-    ...(nodeEnv === "development" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
+    ...parseOrigins(frontendUrl).map(normalizeOrigin),
+    ...(nodeEnv === "development" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []).map(normalizeOrigin),
   ])
 );
 

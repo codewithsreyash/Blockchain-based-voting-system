@@ -1,6 +1,6 @@
 "use client";
 
-import { getStoredAppNetwork } from "./network";
+import { getConfiguredApiBaseUrl, getStoredAppNetwork } from "./network";
 import type {
   AuthResponse,
   Election,
@@ -109,34 +109,6 @@ export function getApiFieldErrors(error: unknown) {
   return {};
 }
 
-function getApiBaseUrl() {
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-
-  if (!apiBaseUrl) {
-    throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
-  }
-
-  let parsedUrl: URL;
-
-  try {
-    parsedUrl = new URL(apiBaseUrl);
-  } catch {
-    throw new Error("Invalid NEXT_PUBLIC_API_BASE_URL");
-  }
-
-  const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
-
-  if (!normalizedPathname || normalizedPathname === "/") {
-    parsedUrl.pathname = "/api";
-  } else if (!normalizedPathname.endsWith("/api")) {
-    parsedUrl.pathname = `${normalizedPathname}/api`;
-  } else {
-    parsedUrl.pathname = normalizedPathname;
-  }
-
-  return parsedUrl.toString().replace(/\/+$/, "");
-}
-
 function withSelectedNetwork(path: string) {
   const url = new URL(path, "https://dva.local");
   url.searchParams.set("network", getStoredAppNetwork());
@@ -173,7 +145,7 @@ async function request<T>(path: string, init: RequestInit = {}, options?: { netw
   }
 
   const requestPath = options?.networkAware ? withSelectedNetwork(path) : path;
-  const response = await fetch(`${getApiBaseUrl()}${requestPath}`, {
+  const response = await fetch(`${getConfiguredApiBaseUrl()}${requestPath}`, {
     ...init,
     headers,
     cache: "no-store",
