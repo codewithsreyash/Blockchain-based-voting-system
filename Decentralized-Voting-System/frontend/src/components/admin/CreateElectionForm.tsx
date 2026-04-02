@@ -1,9 +1,89 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { api } from "../../lib/api";
+import { ApiError, api } from "../../lib/api";
 
 const emptyCandidate = "";
+const minimumTitleLength = 3;
+const minimumDescriptionLength = 10;
+
+function getCreateElectionValidationMessages({
+  title,
+  description,
+  candidateNames,
+  startTime,
+  endTime,
+}: {
+  title: string;
+  description: string;
+  candidateNames: string[];
+  startTime: string;
+  endTime: string;
+}) {
+  const messages: string[] = [];
+  const parsedStartTime = new Date(startTime);
+  const parsedEndTime = new Date(endTime);
+  const normalizedTitle = title.trim();
+  const normalizedDescription = description.trim();
+  const validCandidateCount = candidateNames.filter((candidate) => candidate.trim().length > 0).length;
+  const emptyCandidateCount = candidateNames.filter((candidate) => candidate.trim().length === 0).length;
+
+  if (normalizedTitle.length < minimumTitleLength) {
+    messages.push(`Title must be at least ${minimumTitleLength} characters long`);
+  }
+
+  if (normalizedDescription.length < minimumDescriptionLength) {
+    messages.push(`Description must be at least ${minimumDescriptionLength} characters long`);
+  }
+
+  if (validCandidateCount < 2) {
+    messages.push("At least two candidate names are required");
+  }
+
+  if (emptyCandidateCount > 0) {
+    messages.push("Candidate names cannot be empty");
+  }
+
+  if (!Number.isFinite(parsedStartTime.getTime())) {
+    messages.push("Start time must be a valid date and time");
+  }
+
+  if (!Number.isFinite(parsedEndTime.getTime())) {
+    messages.push("End time must be a valid date and time");
+  }
+
+  if (Number.isFinite(parsedStartTime.getTime()) && parsedStartTime.getTime() <= Date.now()) {
+    messages.push("Start time must be in the future");
+  }
+
+  if (
+    Number.isFinite(parsedStartTime.getTime()) &&
+    Number.isFinite(parsedEndTime.getTime()) &&
+    parsedEndTime <= parsedStartTime
+  ) {
+    messages.push("End time must be after start time");
+  }
+
+  return Array.from(new Set(messages));
+}
+
+function getSubmissionErrors(error: unknown) {
+  if (error instanceof ApiError && error.details) {
+    const fieldErrors = Object.values(error.details.fieldErrors ?? {}).flat().filter(Boolean) as string[];
+    const formErrors = (error.details.formErrors ?? []).filter(Boolean);
+    const errors = Array.from(new Set([...formErrors, ...fieldErrors]));
+
+    if (errors.length > 0) {
+      return errors;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return [error.message];
+  }
+
+  return ["Unable to create election"];
+}
 
 export function CreateElectionForm() {
   const [title, setTitle] = useState("");
@@ -14,7 +94,7 @@ export function CreateElectionForm() {
   const [endTime, setEndTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
 
   function updateCandidate(index: number, value: string) {
     setCandidateNames((current) =>
@@ -30,23 +110,21 @@ export function CreateElectionForm() {
     event.preventDefault();
     setSubmitting(true);
     setMessage("");
-    setError("");
+    setErrors([]);
 
     try {
       const cleanCandidateNames = candidateNames.map((candidate) => candidate.trim()).filter(Boolean);
-      const parsedStartTime = new Date(startTime);
-      const parsedEndTime = new Date(endTime);
+      const validationMessages = getCreateElectionValidationMessages({
+        title,
+        description,
+        candidateNames,
+        startTime,
+        endTime,
+      });
 
-      if (cleanCandidateNames.length < 2) {
-        throw new Error("At least two candidate names are required");
-      }
-
-      if (!Number.isFinite(parsedStartTime.getTime()) || !Number.isFinite(parsedEndTime.getTime())) {
-        throw new Error("Start and end times must be valid");
-      }
-
-      if (parsedEndTime <= parsedStartTime) {
-        throw new Error("End time must be after start time");
+      if (validationMessages.length > 0) {
+        setErrors(validationMessages);
+        return;
       }
 
       const response = await api.createElection({
@@ -69,8 +147,9 @@ export function CreateElectionForm() {
       setCandidateNames([emptyCandidate, emptyCandidate]);
       setStartTime("");
       setEndTime("");
+      setErrors([]);
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Unable to create election");
+      setErrors(getSubmissionErrors(submissionError));
     } finally {
       setSubmitting(false);
     }
@@ -146,7 +225,15 @@ export function CreateElectionForm() {
         </div>
 
         {message ? <p className="message success">{message}</p> : null}
-        {error ? <p className="message error">{error}</p> : null}
+        {errors.length > 0 ? (
+          <div className="stack-sm">
+            {errors.map((errorMessage) => (
+              <p className="message error" key={errorMessage}>
+                {errorMessage}
+              </p>
+            ))}
+          </div>
+        ) : null}
 
         <button className="button" type="submit" disabled={submitting}>
           {submitting ? "Publishing election..." : "Create election"}

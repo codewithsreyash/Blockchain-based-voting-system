@@ -4,6 +4,21 @@ import type { AuthResponse, Election, ElectionResults, PendingVerificationRespon
 
 const TOKEN_STORAGE_KEY = "dva-token";
 
+export type ApiErrorDetails = {
+  formErrors?: string[];
+  fieldErrors?: Record<string, string[] | undefined>;
+};
+
+export class ApiError extends Error {
+  details?: ApiErrorDetails;
+
+  constructor(message: string, details?: ApiErrorDetails) {
+    super(message);
+    this.name = "ApiError";
+    this.details = details;
+  }
+}
+
 function getApiBaseUrl() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 
@@ -70,7 +85,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.message || "Request failed");
+    throw new ApiError(payload.message || "Request failed", payload.details);
   }
 
   return payload as T;

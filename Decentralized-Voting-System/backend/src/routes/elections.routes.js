@@ -15,14 +15,60 @@ const {
 
 const router = express.Router();
 
-const createElectionSchema = z.object({
-  title: z.string().min(3),
-  description: z.string().min(10),
-  eligibleVoters: z.enum(["students", "teachers", "both"]),
-  candidateNames: z.array(z.string().min(1)).min(2).max(50),
-  startTime: z.string().min(1),
-  endTime: z.string().min(1),
-});
+const createElectionSchema = z
+  .object({
+    title: z.string().trim().min(3, "Title must be at least 3 characters long"),
+    description: z.string().trim().min(10, "Description must be at least 10 characters long"),
+    eligibleVoters: z.enum(["students", "teachers", "both"]),
+    candidateNames: z
+      .array(z.string().trim().min(1, "Candidate names cannot be empty"))
+      .min(2, "At least two candidate names are required")
+      .max(50, "No more than 50 candidates are allowed"),
+    startTime: z.string().min(1, "Start time is required"),
+    endTime: z.string().min(1, "End time is required"),
+  })
+  .superRefine((value, ctx) => {
+    const startDate = new Date(value.startTime);
+    const endDate = new Date(value.endTime);
+    const startTime = startDate.getTime();
+    const endTime = endDate.getTime();
+
+    if (!Number.isFinite(startTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: "Start time must be a valid date and time",
+      });
+    }
+
+    if (!Number.isFinite(endTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "End time must be a valid date and time",
+      });
+    }
+
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
+      return;
+    }
+
+    if (startTime <= Date.now()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: "Start time must be in the future",
+      });
+    }
+
+    if (endTime <= startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endTime"],
+        message: "End time must be after start time",
+      });
+    }
+  });
 
 function getEligibilityFlags(eligibleVoters) {
   return {
@@ -79,10 +125,6 @@ router.post(
     const startTime = Math.floor(new Date(payload.startTime).getTime() / 1000);
     const endTime = Math.floor(new Date(payload.endTime).getTime() / 1000);
 
-    if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) {
-      throw createHttpError(400, "Start and end times must be valid ISO date strings");
-    }
-
     const { receipt, gasLimit } = await sendAdminTransaction(
       "createElection",
       [
@@ -94,7 +136,7 @@ router.post(
         startTime,
         endTime,
       ],
-      `Automatic election creation for ${payload.title}`
+      "Election creation"
     );
     const electionId = parseElectionId(receipt, writeContract.interface);
     await syncElectionRecordSafely(electionId);
