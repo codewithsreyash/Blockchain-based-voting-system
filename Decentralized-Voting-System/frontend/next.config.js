@@ -6,7 +6,7 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  outputFileTracingRoot: path.resolve(__dirname, ".."),
+  outputFileTracingRoot: path.resolve(__dirname),
 };
 
 module.exports = nextConfig;
