@@ -2,8 +2,17 @@
 
 import type { AuthResponse, Election, ElectionResults, PendingVerificationResponse, User } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 const TOKEN_STORAGE_KEY = "dva-token";
+
+function getApiBaseUrl() {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+
+  if (!apiBaseUrl) {
+    throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+  }
+
+  return apiBaseUrl.replace(/\/+$/, "");
+}
 
 export function getAuthToken() {
   if (typeof window === "undefined") {
@@ -34,7 +43,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers,
     cache: "no-store",

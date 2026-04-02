@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PendingVerificationTable } from "../../../components/admin/PendingVerificationTable";
 import { api } from "../../../lib/api";
@@ -14,7 +14,7 @@ export default function AdminVerificationsPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function loadQueue() {
+  const loadQueue = useCallback(async () => {
     setError("");
 
     try {
@@ -24,11 +24,11 @@ export default function AdminVerificationsPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load verifications");
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadQueue();
-  }, []);
+  }, [loadQueue]);
 
   async function handleVerify(userId: string) {
     setVerifyingUserId(userId);

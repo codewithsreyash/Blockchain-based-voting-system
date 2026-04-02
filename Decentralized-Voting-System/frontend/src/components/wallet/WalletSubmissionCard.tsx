@@ -17,8 +17,11 @@ export function WalletSubmissionCard() {
 
   const availableConnectors = useMemo(() => connectors.filter((connector) => connector.id !== "mock"), [connectors]);
   const isVerified = user?.verificationStatus === "verified";
+  const normalizedConnectedAddress = address?.toLowerCase();
   const approvedWalletMatchesConnectedWallet =
-    Boolean(user?.walletAddress) && Boolean(address) && user.walletAddress === address.toLowerCase();
+    Boolean(user?.walletAddress) &&
+    Boolean(normalizedConnectedAddress) &&
+    user?.walletAddress === normalizedConnectedAddress;
 
   function getConnectorLabel(connectorId: string, connectorName: string) {
     if (connectorId === "walletConnect") {
@@ -65,7 +68,7 @@ export function WalletSubmissionCard() {
 
   async function handleSubmitWallet() {
     if (!address) {
-      setError("Connect your MetaMask wallet first");
+      setError("Connect your wallet first");
       return;
     }
 

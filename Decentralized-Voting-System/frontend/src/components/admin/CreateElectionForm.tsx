@@ -34,9 +34,24 @@ export function CreateElectionForm() {
 
     try {
       const cleanCandidateNames = candidateNames.map((candidate) => candidate.trim()).filter(Boolean);
+      const parsedStartTime = new Date(startTime);
+      const parsedEndTime = new Date(endTime);
+
+      if (cleanCandidateNames.length < 2) {
+        throw new Error("At least two candidate names are required");
+      }
+
+      if (!Number.isFinite(parsedStartTime.getTime()) || !Number.isFinite(parsedEndTime.getTime())) {
+        throw new Error("Start and end times must be valid");
+      }
+
+      if (parsedEndTime <= parsedStartTime) {
+        throw new Error("End time must be after start time");
+      }
+
       const response = await api.createElection({
-        title,
-        description,
+        title: title.trim(),
+        description: description.trim(),
         eligibleVoters,
         candidateNames: cleanCandidateNames,
         startTime,

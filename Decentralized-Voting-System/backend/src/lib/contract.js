@@ -60,7 +60,17 @@ function getReadableContractError(error, fallbackMessage) {
 }
 
 async function assertChainMatchesConfig() {
-  const network = await provider.getNetwork();
+  let network;
+
+  try {
+    network = await provider.getNetwork();
+  } catch (error) {
+    throw buildContractError(
+      `Unable to reach RPC_URL ${rpcUrl}: ${getReadableContractError(error, "RPC endpoint is unavailable.")}`,
+      500
+    );
+  }
+
   const rpcChainId = Number(network.chainId);
 
   if (rpcChainId !== chainId) {

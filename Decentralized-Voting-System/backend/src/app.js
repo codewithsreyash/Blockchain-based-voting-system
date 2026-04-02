@@ -2,26 +2,18 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const { ZodError } = require("zod");
-const { corsOrigin, frontendUrl } = require("./config/env");
+const { allowedCorsOrigins } = require("./config/env");
 const authRoutes = require("./routes/auth.routes");
 const usersRoutes = require("./routes/users.routes");
 const adminRoutes = require("./routes/admin.routes");
 const electionsRoutes = require("./routes/elections.routes");
 
 const app = express();
-const allowedOrigins = Array.from(
-  new Set(
-    [frontendUrl, corsOrigin, "http://localhost:3000"]
-      .flatMap((value) => value.split(","))
-      .map((value) => value.trim())
-      .filter(Boolean)
-  )
-);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedCorsOrigins.includes(origin)) {
         return callback(null, true);
       }
 

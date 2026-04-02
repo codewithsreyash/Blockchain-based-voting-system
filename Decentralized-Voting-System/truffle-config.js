@@ -8,6 +8,14 @@ function buildWalletProvider(rpcUrl, privateKey) {
   const normalizedPrivateKey =
     privateKey && !privateKey.startsWith("0x") ? `0x${privateKey}` : privateKey;
 
+  if (!rpcUrl) {
+    throw new Error("Missing POLYGON_AMOY_RPC_URL or RPC_URL for the polygonAmoy deployment network.");
+  }
+
+  if (!normalizedPrivateKey) {
+    throw new Error("Missing ADMIN_PRIVATE_KEY for the polygonAmoy deployment network.");
+  }
+
   return () =>
     new HDWalletProvider({
       privateKeys: [normalizedPrivateKey],

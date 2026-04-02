@@ -1,3 +1,11 @@
-node_modules
-build
-package-lock.json
+node_modules/
+.next/
+build/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.local.example

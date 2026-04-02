@@ -91,7 +91,7 @@ export function ElectionDashboard() {
 
   useEffect(() => {
     setIsMounted(true);
-    setCurrentUnixTime(Date.now() / 1000);
+    setCurrentUnixTime(Math.floor(Date.now() / 1000));
   }, []);
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export function ElectionDashboard() {
     }
 
     const timer = window.setInterval(() => {
-      setCurrentUnixTime(Date.now() / 1000);
+      setCurrentUnixTime(Math.floor(Date.now() / 1000));
     }, 1000);
 
     return () => {
@@ -298,9 +298,9 @@ export function ElectionDashboard() {
                 key={connector.uid}
                 type="button"
                 onClick={() => connect({ connector })}
-                disabled={!connector}
+                disabled={isPending}
               >
-                {`Connect ${getConnectorLabel(connector.id, connector.name)}`}
+                {isPending ? "Connecting..." : `Connect ${getConnectorLabel(connector.id, connector.name)}`}
               </button>
             ))}
           </div>
