@@ -3,18 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { api } from "../../lib/api";
+import { chainByAppNetwork } from "../../lib/wagmi";
 import type { User } from "../../lib/types";
+import { useAppNetwork } from "../../providers/network-provider";
 
 export function WalletSubmissionCard() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const { selectedNetwork } = useAppNetwork();
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const targetChainId = chainByAppNetwork[selectedNetwork].id;
   const availableConnectors = useMemo(() => connectors.filter((connector) => connector.id !== "mock"), [connectors]);
   const isVerified = user?.verificationStatus === "verified";
   const normalizedConnectedAddress = address?.toLowerCase();
@@ -127,7 +131,7 @@ export function WalletSubmissionCard() {
                     className="button secondary"
                     key={connector.uid}
                     type="button"
-                    onClick={() => connect({ connector })}
+                    onClick={() => connect({ chainId: targetChainId, connector })}
                     disabled={isPending}
                   >
                     {isPending
@@ -158,7 +162,7 @@ export function WalletSubmissionCard() {
                     className="button"
                     key={connector.uid}
                     type="button"
-                    onClick={() => connect({ connector })}
+                    onClick={() => connect({ chainId: targetChainId, connector })}
                     disabled={isPending}
                   >
                     {isPending ? "Connecting..." : `Connect ${getConnectorLabel(connector.id, connector.name)}`}

@@ -6,6 +6,7 @@ import { readContract, waitForTransactionReceipt } from "@wagmi/core";
 import { useAccount, useChainId, useConnect, useSwitchChain, useWriteContract } from "wagmi";
 import { api } from "../../lib/api";
 import { votingAbi } from "../../lib/contracts/votingAbi";
+import { resolvePublicDemoRpcUrl } from "../../lib/network";
 import { wagmiConfig, chainByAppNetwork } from "../../lib/wagmi";
 import type { Election, User } from "../../lib/types";
 import { useAppNetwork } from "../../providers/network-provider";
@@ -36,32 +37,11 @@ const votingStatusAbi = [
   },
 ] as const;
 
-type BrowserWalletProvider = {
-  request: (request: {
-    method: string;
-    params?: unknown[] | undefined;
-  }) => Promise<unknown>;
-};
-
-type ChainSwitchErrorLike = {
-  code?: number;
-  data?: {
-    originalError?: {
-      code?: number;
-    };
-  };
-};
-
-type ManualAddEthereumChainParameter = {
-  blockExplorerUrls: string[] | null;
-  chainId: `0x${string}`;
-  chainName: string;
-  nativeCurrency: {
-    name: string;
-    symbol: string;
-    decimals: number;
-  };
-  rpcUrls: [string, ...string[]];
+type ManualDemoNetworkInstructions = {
+  chainId: number;
+  currencySymbol: string;
+  networkName: string;
+  rpcUrl: string;
 };
 
 function getCurrentUnixTime() {
@@ -92,36 +72,10 @@ function isElectionLive(election: Election, currentUnixTime: number) {
   return getElectionStateAtTime(election, currentUnixTime) === "Live";
 }
 
-function getBrowserWalletProvider() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return (window as Window & { ethereum?: BrowserWalletProvider }).ethereum ?? null;
-}
-
-function getHexChainId(chainId: number): `0x${string}` {
-  return `0x${chainId.toString(16)}`;
-}
-
-function isMissingChainError(error: unknown) {
-  const errorWithCode = error as ChainSwitchErrorLike | undefined;
-  return errorWithCode?.code === 4902 || errorWithCode?.data?.originalError?.code === 4902;
-}
-
-function isLocalRpcUrl(rpcUrl: string) {
-  try {
-    const hostname = new URL(rpcUrl).hostname;
-    return hostname === "localhost" || hostname === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
-
 export function ElectionDashboard() {
   const { address, isConnected } = useAccount();
   const connectedChainId = useChainId();
-  const { connectors, connect } = useConnect();
+  const { connectors, connect, isPending: isConnecting } = useConnect();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
   const { activeNetwork, isDemoMode, selectedNetwork } = useAppNetwork();
@@ -136,11 +90,14 @@ export function ElectionDashboard() {
   const [deactivatingElectionId, setDeactivatingElectionId] = useState<number | null>(null);
   const [deletingElectionId, setDeletingElectionId] = useState<number | null>(null);
   const [alreadyVotedByElection, setAlreadyVotedByElection] = useState<Record<number, boolean>>({});
+  const [manualDemoNetworkInstructions, setManualDemoNetworkInstructions] = useState<ManualDemoNetworkInstructions | null>(
+    null
+  );
 
   const contractAddress = activeNetwork.contractAddress as `0x${string}` | null;
   const targetChain = chainByAppNetwork[selectedNetwork];
   const targetChainId = targetChain.id as 80002 | 31337;
-  const walletBusy = isPending || isSwitchingChain;
+  const walletBusy = isPending || isSwitchingChain || isConnecting;
   const availableConnectors = useMemo(() => connectors.filter((connector) => connector.id !== "mock"), [connectors]);
 
   function getConnectorLabel(connectorId: string, connectorName: string) {
@@ -265,67 +222,54 @@ export function ElectionDashboard() {
     setMessage("");
     setSelectedCandidates({});
     setAlreadyVotedByElection({});
+    setManualDemoNetworkInstructions(null);
   }, [selectedNetwork]);
+
+  useEffect(() => {
+    if (!isDemoMode || connectedChainId === targetChainId) {
+      setManualDemoNetworkInstructions(null);
+    }
+  }, [connectedChainId, isDemoMode, targetChainId]);
 
   async function ensureWalletOnSelectedNetwork() {
     if (connectedChainId === targetChainId) {
+      setManualDemoNetworkInstructions(null);
       return;
     }
 
     if (selectedNetwork === "local") {
-      const provider = getBrowserWalletProvider();
-
-      if (!provider) {
-        throw new Error("Demo Mode network switching requires a browser wallet that exposes window.ethereum.");
-      }
-
-      const publicDemoRpcUrl = activeNetwork.rpcUrl.trim();
-      if (!publicDemoRpcUrl) {
-        throw new Error("Demo Mode is missing the public RPC URL from the backend.");
-      }
-
-      if (isLocalRpcUrl(publicDemoRpcUrl)) {
-        throw new Error(
-          `Demo Mode RPC is misconfigured: ${publicDemoRpcUrl}. Mobile wallets must use the public Render RPC bridge instead of localhost.`
-        );
-      }
-
-      const chainId = getHexChainId(targetChainId);
-
-      try {
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId }],
-        });
-        return;
-      } catch (switchError) {
-        if (!isMissingChainError(switchError)) {
-          throw switchError;
-        }
-      }
-
-      const addChainParameter: ManualAddEthereumChainParameter = {
-        blockExplorerUrls: activeNetwork.blockExplorerUrl ? [activeNetwork.blockExplorerUrl] : null,
-        chainId,
+      const publicDemoRpcUrl = resolvePublicDemoRpcUrl(activeNetwork.rpcUrl);
+      const addEthereumChainParameter = {
         chainName: targetChain.name,
         nativeCurrency: targetChain.nativeCurrency,
         rpcUrls: [publicDemoRpcUrl],
+        ...(activeNetwork.blockExplorerUrl ? { blockExplorerUrls: [activeNetwork.blockExplorerUrl] } : {}),
       };
 
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: [addChainParameter],
-      });
+      try {
+        await switchChainAsync({
+          addEthereumChainParameter,
+          chainId: targetChainId,
+        });
+        setManualDemoNetworkInstructions(null);
+        return;
+      } catch (switchError) {
+        setManualDemoNetworkInstructions({
+          chainId: targetChainId,
+          currencySymbol: targetChain.nativeCurrency.symbol,
+          networkName: targetChain.name,
+          rpcUrl: publicDemoRpcUrl,
+        });
 
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId }],
-      });
-      return;
-    }
+        const errorMessage = switchError instanceof Error ? switchError.message : "";
+        if (errorMessage.includes("Demo Mode RPC is misconfigured")) {
+          throw switchError;
+        }
 
-    if (!switchChainAsync) {
-      throw new Error(`Switch your wallet to ${activeNetwork.label} and try again.`);
+        throw new Error(
+          `Your wallet could not switch to ${activeNetwork.label} automatically. Add the network manually in your wallet, reconnect if needed, and try again.`
+        );
+      }
     }
 
     await switchChainAsync({ chainId: targetChainId });
@@ -369,6 +313,7 @@ export function ElectionDashboard() {
 
     setError("");
     setMessage("");
+    setManualDemoNetworkInstructions(null);
 
     try {
       await ensureWalletOnSelectedNetwork();
@@ -471,7 +416,7 @@ export function ElectionDashboard() {
                 className="button"
                 key={connector.uid}
                 type="button"
-                onClick={() => connect({ connector })}
+                onClick={() => connect({ chainId: targetChainId, connector })}
                 disabled={walletBusy}
               >
                 {walletBusy ? "Connecting..." : `Connect ${getConnectorLabel(connector.id, connector.name)}`}
@@ -480,7 +425,7 @@ export function ElectionDashboard() {
           </div>
           <p className="muted">
             {selectedNetwork === "local"
-              ? `Your wallet will be prompted to add or switch to Demo Hardhat (${targetChainId}).`
+              ? `Your wallet will be prompted to add or switch to Demo Hardhat (${targetChainId}). If a WalletConnect mobile wallet refuses the custom chain handoff, the manual network details will appear below.`
               : `Your wallet should be on Polygon Amoy (${targetChainId}).`}
           </p>
         </div>
@@ -495,6 +440,26 @@ export function ElectionDashboard() {
       {loading ? <p className="message">Loading elections...</p> : null}
       {message ? <p className="message success">{message}</p> : null}
       {error ? <p className="message error">{error}</p> : null}
+      {manualDemoNetworkInstructions ? (
+        <div className="panel">
+          <p className="eyebrow">Manual Demo Network Setup</p>
+          <h2>Add Demo Hardhat in your wallet</h2>
+          <p className="muted">
+            Some mobile wallets connected through WalletConnect will not approve a custom chain switch from the browser.
+            Add this network manually, reconnect if your wallet asks you to, then try voting again.
+          </p>
+          <div className="info-card">
+            <strong>Network Name</strong>
+            <span className="mono-callout">{manualDemoNetworkInstructions.networkName}</span>
+            <strong>RPC URL</strong>
+            <span className="mono-callout">{manualDemoNetworkInstructions.rpcUrl}</span>
+            <strong>Chain ID</strong>
+            <span className="mono-callout">{manualDemoNetworkInstructions.chainId}</span>
+            <strong>Currency Symbol</strong>
+            <span className="mono-callout">{manualDemoNetworkInstructions.currencySymbol}</span>
+          </div>
+        </div>
+      ) : null}
 
       {!isMounted ? (
         <div className="grid">

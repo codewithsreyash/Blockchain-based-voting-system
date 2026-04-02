@@ -3,6 +3,8 @@
 import type { AppNetwork, NetworkStatusResponse } from "./types";
 
 export const DEFAULT_APP_NETWORK: AppNetwork = "amoy";
+export const DEMO_HARDHAT_CHAIN_ID = 31337;
+export const DEMO_HARDHAT_NETWORK_NAME = "Demo Hardhat";
 const NETWORK_STORAGE_KEY = "dva-selected-network";
 
 export function normalizeAppNetwork(value: string | null | undefined): AppNetwork {
@@ -45,6 +47,31 @@ export function getDemoRpcUrl() {
   return `${getApiOrigin()}/rpc/local`;
 }
 
+export function isLocalRpcUrl(rpcUrl: string) {
+  try {
+    const hostname = new URL(rpcUrl).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
+export function resolvePublicDemoRpcUrl(rpcUrl?: string | null) {
+  const resolvedRpcUrl = rpcUrl?.trim() || getDemoRpcUrl();
+
+  if (!resolvedRpcUrl) {
+    throw new Error("Demo Mode is missing the public RPC URL from the backend.");
+  }
+
+  if (isLocalRpcUrl(resolvedRpcUrl)) {
+    throw new Error(
+      `Demo Mode RPC is misconfigured: ${resolvedRpcUrl}. Mobile wallets must use the public Render RPC bridge instead of localhost.`
+    );
+  }
+
+  return resolvedRpcUrl;
+}
+
 export function getFallbackNetworkStatus(): NetworkStatusResponse {
   return {
     defaultNetwork: DEFAULT_APP_NETWORK,
@@ -60,11 +87,11 @@ export function getFallbackNetworkStatus(): NetworkStatusResponse {
       },
       local: {
         key: "local",
-        label: "Demo Hardhat",
+        label: DEMO_HARDHAT_NETWORK_NAME,
         mode: "demo",
-        chainId: 31337,
+        chainId: DEMO_HARDHAT_CHAIN_ID,
         contractAddress: null,
-        rpcUrl: getDemoRpcUrl(),
+        rpcUrl: resolvePublicDemoRpcUrl(),
         blockExplorerUrl: null,
         note: "Demo mode uses the backend's embedded Hardhat chain and free demo ETH.",
       },

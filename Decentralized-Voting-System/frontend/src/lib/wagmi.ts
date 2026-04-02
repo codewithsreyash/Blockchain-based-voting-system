@@ -3,13 +3,14 @@ import { createConfig, http } from "wagmi";
 import { injected } from "@wagmi/core";
 import { walletConnect } from "@wagmi/connectors";
 import { polygonAmoy } from "wagmi/chains";
-import { getDemoRpcUrl } from "./network";
+import { DEMO_HARDHAT_CHAIN_ID, DEMO_HARDHAT_NETWORK_NAME, resolvePublicDemoRpcUrl } from "./network";
 import type { AppNetwork } from "./types";
 
 const configuredAmoyRpcUrl = process.env.NEXT_PUBLIC_RPC_URL?.trim();
 const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+const demoRpcUrl = resolvePublicDemoRpcUrl();
 
 function getOrigin(url: string | undefined) {
   if (!url) {
@@ -24,8 +25,8 @@ function getOrigin(url: string | undefined) {
 }
 
 const demoHardhatChain = defineChain({
-  id: 31337,
-  name: "Demo Hardhat",
+  id: DEMO_HARDHAT_CHAIN_ID,
+  name: DEMO_HARDHAT_NETWORK_NAME,
   nativeCurrency: {
     name: "Ether",
     symbol: "ETH",
@@ -33,7 +34,7 @@ const demoHardhatChain = defineChain({
   },
   rpcUrls: {
     default: {
-      http: [getDemoRpcUrl()],
+      http: [demoRpcUrl],
     },
   },
   testnet: true,
@@ -43,9 +44,11 @@ const amoyRpcUrl = configuredAmoyRpcUrl ?? polygonAmoy.rpcUrls.default.http[0];
 const walletMetadataUrl =
   configuredAppUrl ??
   (typeof window !== "undefined" ? window.location.origin : getOrigin(configuredApiBaseUrl));
+const wagmiChains = [polygonAmoy, demoHardhatChain] as const;
 const walletConnectConnector =
   walletConnectProjectId && walletMetadataUrl
     ? walletConnect({
+        isNewChainsStale: false,
         projectId: walletConnectProjectId,
         showQrModal: true,
         metadata: {
@@ -68,10 +71,10 @@ export const chainByAppNetwork: Record<AppNetwork, Chain> = {
 };
 
 export const wagmiConfig = createConfig({
-  chains: [polygonAmoy, demoHardhatChain],
+  chains: wagmiChains,
   connectors,
   transports: {
     [polygonAmoy.id]: http(amoyRpcUrl),
-    [demoHardhatChain.id]: http(getDemoRpcUrl()),
+    [demoHardhatChain.id]: http(demoRpcUrl),
   },
 });
