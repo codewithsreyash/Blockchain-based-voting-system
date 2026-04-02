@@ -3,7 +3,7 @@ const { z } = require("zod");
 const { authenticate, requireRole } = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { createHttpError } = require("../utils/httpError");
-const { writeContract, sendAdminTransaction } = require("../lib/contract");
+const { getWriteContract, resolveContractNetwork, sendAdminTransaction } = require("../lib/contract");
 const {
   fetchElection,
   fetchAllElections,
@@ -102,16 +102,16 @@ function parseElectionIdParam(electionIdParam) {
   return electionId;
 }
 
-async function syncElectionRecordSafely(electionId) {
+async function syncElectionRecordSafely(network, electionId) {
   if (!electionId) {
     return;
   }
 
   try {
-    const election = await fetchElection(electionId);
-    await syncElectionRecord(election);
+    const election = await fetchElection(network, electionId);
+    await syncElectionRecord(network, election);
   } catch (error) {
-    console.error(`Unable to sync election ${electionId} metadata`, error);
+    console.error(`Unable to sync election ${electionId} metadata for ${network}`, error);
   }
 }
 
@@ -120,6 +120,7 @@ router.post(
   authenticate,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const payload = createElectionSchema.parse(req.body);
     const { studentsAllowed, teachersAllowed } = getEligibilityFlags(payload.eligibleVoters);
     const startTime = Math.floor(new Date(payload.startTime).getTime() / 1000);
@@ -136,15 +137,18 @@ router.post(
         startTime,
         endTime,
       ],
-      "Election creation"
+      "Election creation",
+      network
     );
-    const electionId = parseElectionId(receipt, writeContract.interface);
-    await syncElectionRecordSafely(electionId);
+    const electionId = parseElectionId(receipt, getWriteContract(network).interface);
+    await syncElectionRecordSafely(network, electionId);
 
     res.status(201).json({
+      network,
       electionId,
       transactionHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+      contractAddress: getWriteContract(network).target,
       gasLimit,
     });
   })
@@ -154,21 +158,23 @@ router.get(
   "/",
   authenticate,
   asyncHandler(async (req, res) => {
-    const elections = (await fetchAllElections()).filter((election) => election.isActive);
+    const network = resolveContractNetwork(req.query.network);
+    const elections = (await fetchAllElections(network)).filter((election) => election.isActive);
 
     if (req.user.role === "admin") {
-      return res.json({ elections });
+      return res.json({ elections, network });
     }
 
     if (req.user.verificationStatus !== "verified") {
       return res.json({
+        network,
         elections: [],
         message: "Your wallet must be verified by an admin before you can see eligible elections",
       });
     }
 
     const visibleElections = elections.filter((election) => isElectionVisibleToRole(req.user.role, election));
-    return res.json({ elections: visibleElections });
+    return res.json({ elections: visibleElections, network });
   })
 );
 
@@ -176,19 +182,20 @@ router.get(
   "/:electionId/results",
   authenticate,
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const electionId = parseElectionIdParam(req.params.electionId);
     let election;
 
     try {
-      election = await fetchElection(electionId);
+      election = await fetchElection(network, electionId);
     } catch (error) {
       throw createHttpError(404, "Election not found");
     }
 
     try {
-      await syncElectionRecord(election);
+      await syncElectionRecord(network, election);
     } catch (error) {
-      console.error(`Unable to sync election ${electionId} metadata before reading results`, error);
+      console.error(`Unable to sync election ${electionId} metadata before reading results for ${network}`, error);
     }
 
     if (
@@ -202,8 +209,11 @@ router.get(
       throw createHttpError(409, "Results are only available after voting ends");
     }
 
-    const results = await fetchElectionResults(electionId);
-    res.json(results);
+    const results = await fetchElectionResults(network, electionId);
+    res.json({
+      ...results,
+      network,
+    });
   })
 );
 
@@ -211,11 +221,12 @@ router.get(
   "/:electionId",
   authenticate,
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const electionId = parseElectionIdParam(req.params.electionId);
     let election;
 
     try {
-      election = await fetchElection(electionId);
+      election = await fetchElection(network, electionId);
     } catch (error) {
       throw createHttpError(404, "Election not found");
     }
@@ -227,7 +238,7 @@ router.get(
       throw createHttpError(403, "You are not allowed to view this election");
     }
 
-    res.json({ election });
+    res.json({ election, network });
   })
 );
 
@@ -236,11 +247,12 @@ router.patch(
   authenticate,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const electionId = parseElectionIdParam(req.params.electionId);
     let election;
 
     try {
-      election = await fetchElection(electionId);
+      election = await fetchElection(network, electionId);
     } catch (error) {
       throw createHttpError(404, "Election not found");
     }
@@ -252,11 +264,13 @@ router.patch(
     const { receipt, gasLimit } = await sendAdminTransaction(
       "deactivateElection",
       [electionId],
-      `Automatic election deactivation for ${election.title}`
+      `Automatic election deactivation for ${election.title}`,
+      network
     );
-    await syncElectionRecordSafely(electionId);
+    await syncElectionRecordSafely(network, electionId);
 
     res.json({
+      network,
       electionId,
       transactionHash: receipt.hash,
       blockNumber: receipt.blockNumber,

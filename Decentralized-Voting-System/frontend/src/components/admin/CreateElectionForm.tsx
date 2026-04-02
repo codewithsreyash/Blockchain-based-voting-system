@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { ApiError, api } from "../../lib/api";
+import { useAppNetwork } from "../../providers/network-provider";
 
 const emptyCandidate = "";
 const minimumTitleLength = 3;
@@ -86,6 +87,7 @@ function getSubmissionErrors(error: unknown) {
 }
 
 export function CreateElectionForm() {
+  const { activeNetwork, isDemoMode } = useAppNetwork();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [eligibleVoters, setEligibleVoters] = useState<"students" | "teachers" | "both">("both");
@@ -138,8 +140,8 @@ export function CreateElectionForm() {
 
       setMessage(
         response.electionId
-          ? `Election #${response.electionId} created successfully.`
-          : "Election created successfully."
+          ? `Election #${response.electionId} created successfully on ${activeNetwork.label}.`
+          : `Election created successfully on ${activeNetwork.label}.`
       );
       setTitle("");
       setDescription("");
@@ -161,6 +163,10 @@ export function CreateElectionForm() {
       <h1>Create a role-aware election</h1>
       <p className="muted">
         Choose which campus roles are eligible before publishing the election to the contract.
+      </p>
+      <p className="message">
+        Publishing to <strong>{activeNetwork.label}</strong>
+        {isDemoMode ? " with the backend's free demo signer." : " with the Amoy backend signer."}
       </p>
 
       <form className="stack-lg" onSubmit={handleSubmit}>

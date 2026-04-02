@@ -1,4 +1,4 @@
-const { readContract } = require("../lib/contract");
+const { getReadContract } = require("../lib/contract");
 const ElectionRecord = require("../models/Election");
 
 function mapEligibleVoters(studentsAllowed, teachersAllowed) {
@@ -45,10 +45,12 @@ function shouldRevealVoteCounts(election, includeVoteCounts) {
   return includeVoteCounts || Math.floor(Date.now() / 1000) >= election.endTime;
 }
 
-async function fetchElection(electionId, options = {}) {
+async function fetchElection(network, electionId, options = {}) {
+  const readContract = getReadContract(network);
   const electionData = await readContract.getElection(electionId);
 
   const election = {
+    network,
     id: Number(electionData[0]),
     title: electionData[1],
     description: electionData[2],
@@ -83,6 +85,7 @@ async function fetchElection(electionId, options = {}) {
 
 function serializeElectionRecord(record) {
   return {
+    network: record.network,
     id: record.electionId,
     title: record.title,
     description: record.description,
@@ -98,6 +101,7 @@ function serializeElectionRecord(record) {
 
 function buildElectionRecordUpdate(election) {
   return {
+    network: election.network,
     electionId: election.id,
     title: election.title,
     description: election.description,
@@ -111,10 +115,15 @@ function buildElectionRecordUpdate(election) {
   };
 }
 
-async function syncElectionRecord(election) {
+async function syncElectionRecord(network, election) {
   const record = await ElectionRecord.findOneAndUpdate(
-    { electionId: election.id },
-    { $set: buildElectionRecordUpdate(election) },
+    { network, electionId: election.id },
+    {
+      $set: {
+        ...buildElectionRecordUpdate(election),
+        network,
+      },
+    },
     {
       new: true,
       upsert: true,
@@ -125,24 +134,24 @@ async function syncElectionRecord(election) {
   return serializeElectionRecord(record);
 }
 
-async function getElectionMetadata(electionId, fallbackElection) {
-  const existingRecord = await ElectionRecord.findOne({ electionId }).lean();
+async function getElectionMetadata(network, electionId, fallbackElection) {
+  const existingRecord = await ElectionRecord.findOne({ network, electionId }).lean();
 
   if (existingRecord) {
     return serializeElectionRecord(existingRecord);
   }
 
   if (fallbackElection) {
-    return syncElectionRecord(fallbackElection);
+    return syncElectionRecord(network, fallbackElection);
   }
 
-  const election = await fetchElection(electionId);
-  return syncElectionRecord(election);
+  const election = await fetchElection(network, electionId);
+  return syncElectionRecord(network, election);
 }
 
-async function fetchElectionResults(electionId) {
-  const election = await fetchElection(electionId, { includeVoteCounts: true });
-  const metadata = await getElectionMetadata(electionId, election);
+async function fetchElectionResults(network, electionId) {
+  const election = await fetchElection(network, electionId, { includeVoteCounts: true });
+  const metadata = await getElectionMetadata(network, electionId, election);
   const totalVotes = election.candidates.reduce((sum, candidate) => sum + candidate.voteCount, 0);
   const highestVoteCount = totalVotes > 0 ? Math.max(...election.candidates.map((candidate) => candidate.voteCount)) : 0;
 
@@ -162,11 +171,12 @@ async function fetchElectionResults(electionId) {
   };
 }
 
-async function fetchAllElections(options = {}) {
+async function fetchAllElections(network, options = {}) {
+  const readContract = getReadContract(network);
   const count = Number(await readContract.electionCount());
   const electionIds = Array.from({ length: count }, (_value, index) => index + 1);
 
-  return Promise.all(electionIds.map((electionId) => fetchElection(electionId, options)));
+  return Promise.all(electionIds.map((electionId) => fetchElection(network, electionId, options)));
 }
 
 module.exports = {

@@ -2,10 +2,11 @@ import { defineChain, type Chain } from "viem";
 import { createConfig, http } from "wagmi";
 import { injected } from "@wagmi/core";
 import { walletConnect } from "@wagmi/connectors";
-import { arbitrumSepolia, polygon, polygonAmoy } from "wagmi/chains";
+import { polygonAmoy } from "wagmi/chains";
+import { getDemoRpcUrl } from "./network";
+import type { AppNetwork } from "./types";
 
-const configuredChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 80002);
-const configuredRpcUrl = process.env.NEXT_PUBLIC_RPC_URL?.trim();
+const configuredAmoyRpcUrl = process.env.NEXT_PUBLIC_RPC_URL?.trim();
 const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
 const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
@@ -22,15 +23,9 @@ function getOrigin(url: string | undefined) {
   }
 }
 
-const supportedChains: Record<number, Chain> = {
-  137: polygon,
-  421614: arbitrumSepolia,
-  80002: polygonAmoy,
-};
-
-const localDevelopmentChain = defineChain({
-  id: configuredChainId,
-  name: configuredChainId === 1337 ? "Local Ganache" : `Custom Chain ${configuredChainId}`,
+const demoHardhatChain = defineChain({
+  id: 31337,
+  name: "Demo Hardhat",
   nativeCurrency: {
     name: "Ether",
     symbol: "ETH",
@@ -38,14 +33,13 @@ const localDevelopmentChain = defineChain({
   },
   rpcUrls: {
     default: {
-      http: configuredRpcUrl ? [configuredRpcUrl] : [],
+      http: [getDemoRpcUrl()],
     },
   },
   testnet: true,
 });
 
-export const selectedChain: Chain = supportedChains[configuredChainId] ?? localDevelopmentChain;
-const selectedRpcUrl = configuredRpcUrl ?? selectedChain.rpcUrls.default.http[0];
+const amoyRpcUrl = configuredAmoyRpcUrl ?? polygonAmoy.rpcUrls.default.http[0];
 const walletMetadataUrl =
   configuredAppUrl ??
   (typeof window !== "undefined" ? window.location.origin : getOrigin(configuredApiBaseUrl));
@@ -64,14 +58,20 @@ const walletConnectConnector =
     : null;
 const connectors = walletConnectConnector ? [injected(), walletConnectConnector] : [injected()];
 
-if (!selectedRpcUrl) {
-  throw new Error("Missing NEXT_PUBLIC_RPC_URL for the configured chain.");
+if (!amoyRpcUrl) {
+  throw new Error("Missing NEXT_PUBLIC_RPC_URL for Polygon Amoy.");
 }
 
+export const chainByAppNetwork: Record<AppNetwork, Chain> = {
+  amoy: polygonAmoy,
+  local: demoHardhatChain,
+};
+
 export const wagmiConfig = createConfig({
-  chains: [selectedChain],
+  chains: [polygonAmoy, demoHardhatChain],
   connectors,
   transports: {
-    [selectedChain.id]: http(selectedRpcUrl),
+    [polygonAmoy.id]: http(amoyRpcUrl),
+    [demoHardhatChain.id]: http(getDemoRpcUrl()),
   },
 });

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { readContract, waitForTransactionReceipt } from "@wagmi/core";
-import { useAccount, useConnect, useWriteContract } from "wagmi";
+import { useAccount, useChainId, useConnect, useSwitchChain, useWriteContract } from "wagmi";
 import { api } from "../../lib/api";
 import { votingAbi } from "../../lib/contracts/votingAbi";
-import { wagmiConfig } from "../../lib/wagmi";
+import { wagmiConfig, chainByAppNetwork } from "../../lib/wagmi";
 import type { Election, User } from "../../lib/types";
+import { useAppNetwork } from "../../providers/network-provider";
 
 const alreadyVotedNotice = "You have already voted in this election.";
 
@@ -61,8 +62,11 @@ function isElectionLive(election: Election, currentUnixTime: number) {
 
 export function ElectionDashboard() {
   const { address, isConnected } = useAccount();
+  const connectedChainId = useChainId();
   const { connectors, connect } = useConnect();
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
   const { writeContractAsync, isPending } = useWriteContract();
+  const { activeNetwork, isDemoMode, selectedNetwork } = useAppNetwork();
   const [user, setUser] = useState<User | null>(null);
   const [elections, setElections] = useState<Election[]>([]);
   const [selectedCandidates, setSelectedCandidates] = useState<Record<number, number>>({});
@@ -74,7 +78,9 @@ export function ElectionDashboard() {
   const [deactivatingElectionId, setDeactivatingElectionId] = useState<number | null>(null);
   const [alreadyVotedByElection, setAlreadyVotedByElection] = useState<Record<number, boolean>>({});
 
-  const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` | undefined;
+  const contractAddress = activeNetwork.contractAddress as `0x${string}` | null;
+  const targetChainId = chainByAppNetwork[selectedNetwork].id as 80002 | 31337;
+  const walletBusy = isPending || isSwitchingChain;
   const availableConnectors = useMemo(() => connectors.filter((connector) => connector.id !== "mock"), [connectors]);
 
   function getConnectorLabel(connectorId: string, connectorName: string) {
@@ -107,6 +113,7 @@ export function ElectionDashboard() {
           return;
         }
 
+        setMessage("");
         setUser(currentUser);
         setElections(electionResponse.elections);
         if (electionResponse.message) {
@@ -127,7 +134,7 @@ export function ElectionDashboard() {
     return () => {
       active = false;
     };
-  }, [isMounted]);
+  }, [isMounted, selectedNetwork]);
 
   useEffect(() => {
     if (!isMounted) {
@@ -160,6 +167,7 @@ export function ElectionDashboard() {
     Promise.all(
       activeElectionIds.map(async (electionId) => {
         const hasAlreadyVoted = await readContract(wagmiConfig, {
+          chainId: targetChainId,
           address: contractAddress,
           abi: votingStatusAbi,
           functionName: "hasVoted",
@@ -190,11 +198,34 @@ export function ElectionDashboard() {
     return () => {
       active = false;
     };
-  }, [address, contractAddress, elections, isConnected, isMounted]);
+  }, [address, contractAddress, elections, isConnected, isMounted, targetChainId]);
+
+  useEffect(() => {
+    setError("");
+    setMessage("");
+    setSelectedCandidates({});
+    setAlreadyVotedByElection({});
+  }, [selectedNetwork]);
+
+  async function ensureWalletOnSelectedNetwork() {
+    if (connectedChainId === targetChainId) {
+      return;
+    }
+
+    if (!switchChainAsync) {
+      throw new Error(`Switch your wallet to ${activeNetwork.label} and try again.`);
+    }
+
+    await switchChainAsync({ chainId: targetChainId });
+  }
 
   async function castVote(election: Election) {
     if (!contractAddress) {
-      setError("Missing NEXT_PUBLIC_CONTRACT_ADDRESS");
+      setError(
+        selectedNetwork === "local"
+          ? "Demo contract is still starting on the backend. Try again in a few seconds."
+          : "Missing NEXT_PUBLIC_CONTRACT_ADDRESS"
+      );
       return;
     }
 
@@ -228,15 +259,17 @@ export function ElectionDashboard() {
     setMessage("");
 
     try {
+      await ensureWalletOnSelectedNetwork();
       const hash = await writeContractAsync({
+        chainId: targetChainId,
         address: contractAddress,
         abi: votingAbi,
         functionName: "vote",
         args: [BigInt(election.id), BigInt(candidateId)],
       });
 
-      await waitForTransactionReceipt(wagmiConfig, { hash });
-      setMessage(`Vote confirmed for election #${election.id}.`);
+      await waitForTransactionReceipt(wagmiConfig, { chainId: targetChainId, hash });
+      setMessage(`Vote confirmed for election #${election.id} on ${activeNetwork.label}.`);
       setAlreadyVotedByElection((current) => ({
         ...current,
         [election.id]: true,
@@ -285,6 +318,10 @@ export function ElectionDashboard() {
           Teachers see teacher-eligible elections, students see student-eligible elections, and the contract enforces
           the same rule during the vote transaction.
         </p>
+        <p className="message">
+          Active network: <strong>{activeNetwork.label}</strong>
+          {isDemoMode ? " with free demo ETH for verified wallets." : " using the live Amoy deployment."}
+        </p>
         {user?.walletAddress ? <p className="mono-callout">Verified wallet: {user.walletAddress}</p> : null}
       </div>
 
@@ -298,13 +335,24 @@ export function ElectionDashboard() {
                 key={connector.uid}
                 type="button"
                 onClick={() => connect({ connector })}
-                disabled={isPending}
+                disabled={walletBusy}
               >
-                {isPending ? "Connecting..." : `Connect ${getConnectorLabel(connector.id, connector.name)}`}
+                {walletBusy ? "Connecting..." : `Connect ${getConnectorLabel(connector.id, connector.name)}`}
               </button>
             ))}
           </div>
+          <p className="muted">
+            {selectedNetwork === "local"
+              ? `Your wallet will be prompted to add or switch to Demo Hardhat (${targetChainId}).`
+              : `Your wallet should be on Polygon Amoy (${targetChainId}).`}
+          </p>
         </div>
+      ) : null}
+
+      {isConnected && connectedChainId !== targetChainId ? (
+        <p className="message error">
+          Wallet connected to chain {connectedChainId}. Switch to {activeNetwork.label} before voting.
+        </p>
       ) : null}
 
       {loading ? <p className="message">Loading elections...</p> : null}
@@ -325,7 +373,7 @@ export function ElectionDashboard() {
             const electionState = getElectionStateAtTime(election, currentUnixTime);
             const votingOpen = electionState === "Live";
             const alreadyVoted = Boolean(alreadyVotedByElection[election.id]);
-            const voteButtonDisabled = isPending || !votingOpen || alreadyVoted;
+            const voteButtonDisabled = walletBusy || !votingOpen || alreadyVoted;
             const canHideElection = user?.role === "admin" && electionState === "Closed";
 
             return (
@@ -384,7 +432,7 @@ export function ElectionDashboard() {
                     onClick={() => castVote(election)}
                     disabled={voteButtonDisabled}
                   >
-                    {isPending
+                    {walletBusy
                       ? "Submitting vote..."
                       : alreadyVoted
                         ? "Already Voted"

@@ -1,6 +1,33 @@
+const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 const { ethers } = require("ethers");
-const { rpcUrl, contractAddress, adminPrivateKey, chainId } = require("../config/env");
+const {
+  rpcUrl,
+  contractAddress,
+  adminPrivateKey,
+  chainId,
+  localDemoRpcPort,
+  localDemoChainId,
+  localDemoFundingEth,
+} = require("../config/env");
+
+const NETWORK_KEYS = Object.freeze({
+  AMOY: "amoy",
+  LOCAL: "local",
+});
+
+const NETWORK_LABELS = Object.freeze({
+  [NETWORK_KEYS.AMOY]: "Polygon Amoy",
+  [NETWORK_KEYS.LOCAL]: "Demo Hardhat",
+});
+
+const LOCAL_DEMO_HOST = "127.0.0.1";
+const LOCAL_DEMO_RPC_URL = `http://${LOCAL_DEMO_HOST}:${localDemoRpcPort}`;
+const LOCAL_DEMO_RPC_PATH = "/rpc/local";
+const contractContexts = new Map();
+let localDemoProcess = null;
+let localDemoStartedByBackend = false;
 
 function loadArtifact() {
   try {
@@ -13,25 +40,18 @@ function loadArtifact() {
 }
 
 const artifact = loadArtifact();
-const normalizedPrivateKey = adminPrivateKey.startsWith("0x") ? adminPrivateKey : `0x${adminPrivateKey}`;
-const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
-const adminSigner = new ethers.Wallet(normalizedPrivateKey, provider);
-const readContract = new ethers.Contract(contractAddress, artifact.abi, provider);
-const writeContract = new ethers.Contract(contractAddress, artifact.abi, adminSigner);
 
-const contractRoleMap = {
-  admin: 1,
-  student: 2,
-  teacher: 3,
-};
-
-function getContractRole(role) {
-  const contractRole = contractRoleMap[role];
-  if (!contractRole) {
-    throw new Error(`Unsupported role for contract verification: ${role}`);
+function normalizePrivateKey(privateKey) {
+  if (!privateKey) {
+    return privateKey;
   }
 
-  return contractRole;
+  return privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+}
+
+function resolveContractNetwork(requestedNetwork) {
+  const rawValue = Array.isArray(requestedNetwork) ? requestedNetwork[0] : requestedNetwork;
+  return rawValue === NETWORK_KEYS.LOCAL ? NETWORK_KEYS.LOCAL : NETWORK_KEYS.AMOY;
 }
 
 function buildContractError(message, statusCode = 400, details) {
@@ -59,23 +79,59 @@ function getReadableContractError(error, fallbackMessage) {
   return rawMessage.replace(/^execution reverted:\s*/i, "").trim();
 }
 
-async function assertChainMatchesConfig() {
+async function resolveSignerAddress(signer) {
+  if (typeof signer.getAddress === "function") {
+    return signer.getAddress();
+  }
+
+  return signer.address;
+}
+
+function createContractContext({
+  networkKey,
+  mode,
+  provider,
+  adminSigner,
+  contractAddress: resolvedContractAddress,
+  rpcUrl: resolvedRpcUrl,
+  chainId: resolvedChainId,
+  publicRpcPath,
+}) {
+  return {
+    networkKey,
+    label: NETWORK_LABELS[networkKey],
+    mode,
+    provider,
+    adminSigner,
+    contractAddress: resolvedContractAddress,
+    rpcUrl: resolvedRpcUrl,
+    chainId: resolvedChainId,
+    publicRpcPath: publicRpcPath || null,
+    readContract: new ethers.Contract(resolvedContractAddress, artifact.abi, provider),
+    writeContract: new ethers.Contract(resolvedContractAddress, artifact.abi, adminSigner),
+  };
+}
+
+async function assertChainMatchesConfig(context) {
   let network;
 
   try {
-    network = await provider.getNetwork();
+    network = await context.provider.getNetwork();
   } catch (error) {
     throw buildContractError(
-      `Unable to reach RPC_URL ${rpcUrl}: ${getReadableContractError(error, "RPC endpoint is unavailable.")}`,
+      `Unable to reach ${context.label} RPC ${context.rpcUrl}: ${getReadableContractError(
+        error,
+        "RPC endpoint is unavailable."
+      )}`,
       500
     );
   }
 
   const rpcChainId = Number(network.chainId);
 
-  if (rpcChainId !== chainId) {
+  if (rpcChainId !== context.chainId) {
     throw buildContractError(
-      `RPC chain ID ${rpcChainId} does not match configured CHAIN_ID ${chainId}. Check backend/.env.`,
+      `${context.label} RPC chain ID ${rpcChainId} does not match configured chain ID ${context.chainId}.`,
       500
     );
   }
@@ -83,21 +139,23 @@ async function assertChainMatchesConfig() {
   return rpcChainId;
 }
 
-async function assertAdminSignerAuthorized() {
+async function assertAdminSignerAuthorized(context) {
   let owner;
 
   try {
-    owner = await readContract.owner();
+    owner = await context.readContract.owner();
   } catch (error) {
     throw buildContractError(
-      getReadableContractError(error, "Unable to read contract owner from chain."),
+      getReadableContractError(error, `Unable to read the ${context.label} contract owner.`),
       500
     );
   }
 
-  if (owner.toLowerCase() !== adminSigner.address.toLowerCase()) {
+  const signerAddress = await resolveSignerAddress(context.adminSigner);
+
+  if (owner.toLowerCase() !== signerAddress.toLowerCase()) {
     throw buildContractError(
-      `Backend signer ${adminSigner.address} is not the contract owner. Contract owner is ${owner}. Set INITIAL_ADMIN_ADDRESS and ADMIN_PRIVATE_KEY to the same wallet before deploying.`,
+      `${context.label} signer ${signerAddress} is not the contract owner. Contract owner is ${owner}.`,
       500
     );
   }
@@ -105,35 +163,268 @@ async function assertAdminSignerAuthorized() {
   return owner;
 }
 
-async function initializeContractAccess() {
-  await assertChainMatchesConfig();
-  const owner = await assertAdminSignerAuthorized();
-
-  return {
-    owner,
-    signerAddress: adminSigner.address,
-    contractAddress,
-    chainId,
-  };
+function getBackendRootDir() {
+  return path.resolve(__dirname, "../..");
 }
 
-async function sendAdminTransaction(methodName, args, actionLabel) {
-  await assertAdminSignerAuthorized();
+function resolveHardhatBinary() {
+  const executable = process.platform === "win32" ? "hardhat.cmd" : "hardhat";
+  const binaryPath = path.resolve(getBackendRootDir(), "node_modules/.bin", executable);
 
-  const data = writeContract.interface.encodeFunctionData(methodName, args);
+  if (!fs.existsSync(binaryPath)) {
+    throw buildContractError(
+      "Missing Hardhat runtime in backend/node_modules. Run `npm install` in the backend before starting demo mode.",
+      500
+    );
+  }
+
+  return binaryPath;
+}
+
+function spawnHardhatNode(binaryPath, backendRootDir) {
+  const args = ["node", "--hostname", LOCAL_DEMO_HOST, "--port", String(localDemoRpcPort)];
+
+  if (process.platform === "win32") {
+    return spawn("cmd.exe", ["/d", "/s", "/c", binaryPath, ...args], {
+      cwd: backendRootDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  }
+
+  return spawn(binaryPath, args, {
+    cwd: backendRootDir,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function logDemoNodeOutput(source, chunk) {
+  const lines = chunk
+    .toString()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    console.log(`[demo-node:${source}] ${line}`);
+  }
+}
+
+async function wait(ms) {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function connectToExistingDemoProvider() {
+  const provider = new ethers.JsonRpcProvider(LOCAL_DEMO_RPC_URL, localDemoChainId);
+
+  try {
+    const network = await provider.getNetwork();
+    const rpcChainId = Number(network.chainId);
+
+    if (rpcChainId !== localDemoChainId) {
+      throw buildContractError(
+        `Port ${localDemoRpcPort} is already serving chain ${rpcChainId}, expected the demo Hardhat chain ${localDemoChainId}.`,
+        500
+      );
+    }
+
+    await provider.getBlockNumber();
+    return provider;
+  } catch (error) {
+    const message = getReadableContractError(error, "");
+
+    if (
+      message.includes("ECONNREFUSED") ||
+      message.includes("ECONNRESET") ||
+      message.includes("failed to connect") ||
+      message.includes("missing response") ||
+      message.includes("socket hang up")
+    ) {
+      return null;
+    }
+
+    if (error.statusCode) {
+      throw error;
+    }
+
+    throw buildContractError(
+      `Unable to connect to the embedded demo RPC ${LOCAL_DEMO_RPC_URL}: ${message || "Unexpected RPC error."}`,
+      500
+    );
+  }
+}
+
+async function waitForDemoRpc(childProcess) {
+  const provider = new ethers.JsonRpcProvider(LOCAL_DEMO_RPC_URL, localDemoChainId);
+  const timeoutAt = Date.now() + 30_000;
+
+  while (Date.now() < timeoutAt) {
+    if (childProcess.exitCode !== null) {
+      throw buildContractError("Embedded Hardhat demo node exited before it became ready.", 500);
+    }
+
+    try {
+      const network = await provider.getNetwork();
+      if (Number(network.chainId) !== localDemoChainId) {
+        throw buildContractError(
+          `Embedded Hardhat demo node started on unexpected chain ${Number(network.chainId)}.`,
+          500
+        );
+      }
+
+      await provider.getBlockNumber();
+      return provider;
+    } catch (error) {
+      await wait(500);
+    }
+  }
+
+  throw buildContractError("Embedded Hardhat demo node did not become ready within 30 seconds.", 500);
+}
+
+async function ensureLocalDemoProvider() {
+  const existingProvider = await connectToExistingDemoProvider();
+  if (existingProvider) {
+    return existingProvider;
+  }
+
+  const binaryPath = resolveHardhatBinary();
+  const backendRootDir = getBackendRootDir();
+
+  localDemoProcess = spawnHardhatNode(binaryPath, backendRootDir);
+  localDemoStartedByBackend = true;
+
+  localDemoProcess.stdout.on("data", (chunk) => {
+    logDemoNodeOutput("stdout", chunk);
+  });
+  localDemoProcess.stderr.on("data", (chunk) => {
+    logDemoNodeOutput("stderr", chunk);
+  });
+  localDemoProcess.on("exit", (code, signal) => {
+    if (signal !== "SIGTERM" && code !== 0) {
+      console.error(`Embedded demo node exited unexpectedly with code ${code ?? "unknown"} and signal ${signal ?? "none"}`);
+    }
+
+    contractContexts.delete(NETWORK_KEYS.LOCAL);
+    localDemoProcess = null;
+    localDemoStartedByBackend = false;
+  });
+
+  return waitForDemoRpc(localDemoProcess);
+}
+
+async function initializeAmoyContext() {
+  const normalizedPrivateKey = normalizePrivateKey(adminPrivateKey);
+  const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+  const adminSigner = new ethers.Wallet(normalizedPrivateKey, provider);
+  const context = createContractContext({
+    networkKey: NETWORK_KEYS.AMOY,
+    mode: "production",
+    provider,
+    adminSigner,
+    contractAddress,
+    rpcUrl,
+    chainId,
+  });
+
+  await assertChainMatchesConfig(context);
+  await assertAdminSignerAuthorized(context);
+
+  return context;
+}
+
+async function initializeLocalDemoContext() {
+  const provider = await ensureLocalDemoProvider();
+  const adminSigner = await provider.getSigner(0);
+  const adminAddress = await resolveSignerAddress(adminSigner);
+  const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, adminSigner);
+  const deployedContract = await factory.deploy(adminAddress);
+
+  await deployedContract.waitForDeployment();
+
+  const deployedContractAddress = await deployedContract.getAddress();
+  const context = createContractContext({
+    networkKey: NETWORK_KEYS.LOCAL,
+    mode: "demo",
+    provider,
+    adminSigner,
+    contractAddress: deployedContractAddress,
+    rpcUrl: LOCAL_DEMO_RPC_URL,
+    chainId: localDemoChainId,
+    publicRpcPath: LOCAL_DEMO_RPC_PATH,
+  });
+
+  await assertChainMatchesConfig(context);
+  await assertAdminSignerAuthorized(context);
+
+  return context;
+}
+
+async function initializeContractAccess() {
+  const amoyContext = await initializeAmoyContext();
+  contractContexts.set(NETWORK_KEYS.AMOY, amoyContext);
+
+  const localContext = await initializeLocalDemoContext();
+  contractContexts.set(NETWORK_KEYS.LOCAL, localContext);
+
+  return getNetworkCatalog();
+}
+
+function getContractContext(requestedNetwork) {
+  const networkKey = resolveContractNetwork(requestedNetwork);
+  const context = contractContexts.get(networkKey);
+
+  if (!context) {
+    throw buildContractError(`${NETWORK_LABELS[networkKey]} is not ready yet.`, 503);
+  }
+
+  return context;
+}
+
+function getReadContract(requestedNetwork) {
+  return getContractContext(requestedNetwork).readContract;
+}
+
+function getWriteContract(requestedNetwork) {
+  return getContractContext(requestedNetwork).writeContract;
+}
+
+const contractRoleMap = {
+  admin: 1,
+  student: 2,
+  teacher: 3,
+};
+
+function getContractRole(role) {
+  const contractRole = contractRoleMap[role];
+  if (!contractRole) {
+    throw new Error(`Unsupported role for contract verification: ${role}`);
+  }
+
+  return contractRole;
+}
+
+async function sendAdminTransaction(methodName, args, actionLabel, requestedNetwork = NETWORK_KEYS.AMOY) {
+  const context = getContractContext(requestedNetwork);
+  await assertAdminSignerAuthorized(context);
+
+  const signerAddress = await resolveSignerAddress(context.adminSigner);
+  const data = context.writeContract.interface.encodeFunctionData(methodName, args);
   const transactionRequest = {
-    to: contractAddress,
-    from: adminSigner.address,
+    to: context.contractAddress,
+    from: signerAddress,
     data,
   };
 
   try {
-    const estimatedGas = await provider.estimateGas(transactionRequest);
+    const estimatedGas = await context.provider.estimateGas(transactionRequest);
     const gasBuffer = estimatedGas / 5n;
     transactionRequest.gasLimit = estimatedGas + (gasBuffer > 0n ? gasBuffer : 50_000n);
   } catch (error) {
     throw buildContractError(
-      `${actionLabel} failed before submission: ${getReadableContractError(
+      `${actionLabel} failed before submission on ${context.label}: ${getReadableContractError(
         error,
         "Unable to estimate gas for the contract write."
       )}`
@@ -142,10 +433,10 @@ async function sendAdminTransaction(methodName, args, actionLabel) {
 
   let transaction;
   try {
-    transaction = await adminSigner.sendTransaction(transactionRequest);
+    transaction = await context.adminSigner.sendTransaction(transactionRequest);
   } catch (error) {
     throw buildContractError(
-      `${actionLabel} failed during submission: ${getReadableContractError(
+      `${actionLabel} failed during submission on ${context.label}: ${getReadableContractError(
         error,
         "Unable to send the transaction from the backend signer."
       )}`
@@ -157,7 +448,7 @@ async function sendAdminTransaction(methodName, args, actionLabel) {
     receipt = await transaction.wait();
   } catch (error) {
     throw buildContractError(
-      `${actionLabel} failed while waiting for confirmation: ${getReadableContractError(
+      `${actionLabel} failed while waiting for confirmation on ${context.label}: ${getReadableContractError(
         error,
         "Transaction was not confirmed successfully."
       )}`
@@ -165,23 +456,134 @@ async function sendAdminTransaction(methodName, args, actionLabel) {
   }
 
   if (!receipt || receipt.status !== 1) {
-    throw buildContractError(`${actionLabel} failed on-chain. Transaction reverted after submission.`);
+    throw buildContractError(`${actionLabel} failed on ${context.label}. Transaction reverted after submission.`);
   }
 
   return {
     transaction,
     receipt,
     gasLimit: transactionRequest.gasLimit?.toString(),
+    network: context.networkKey,
+    contractAddress: context.contractAddress,
   };
 }
 
+async function ensureDemoWalletFunds(requestedNetwork, walletAddress) {
+  if (resolveContractNetwork(requestedNetwork) !== NETWORK_KEYS.LOCAL) {
+    return null;
+  }
+
+  const context = getContractContext(NETWORK_KEYS.LOCAL);
+  const normalizedAddress = ethers.getAddress(walletAddress);
+  const currentBalance = await context.provider.getBalance(normalizedAddress);
+  const fundingAmount = ethers.parseEther(localDemoFundingEth);
+  const minimumBalance = fundingAmount / 10n;
+
+  if (currentBalance >= minimumBalance) {
+    return null;
+  }
+
+  const transaction = await context.adminSigner.sendTransaction({
+    to: normalizedAddress,
+    value: fundingAmount,
+  });
+  const receipt = await transaction.wait();
+
+  return {
+    transactionHash: receipt.hash,
+    amountEth: localDemoFundingEth,
+  };
+}
+
+async function forwardLocalDemoRpcRequest(body) {
+  getContractContext(NETWORK_KEYS.LOCAL);
+
+  let response;
+
+  try {
+    response = await fetch(LOCAL_DEMO_RPC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+  } catch (error) {
+    throw buildContractError(
+      `Unable to reach the embedded demo RPC: ${getReadableContractError(error, "JSON-RPC bridge failed.")}`,
+      502
+    );
+  }
+
+  return {
+    status: response.status,
+    contentType: response.headers.get("content-type") || "application/json",
+    payload: await response.text(),
+  };
+}
+
+function getPublicDemoRpcUrl(baseUrl) {
+  if (!baseUrl) {
+    return LOCAL_DEMO_RPC_PATH;
+  }
+
+  return new URL(LOCAL_DEMO_RPC_PATH, baseUrl).toString();
+}
+
+function getNetworkCatalog(baseUrl) {
+  const amoyContext = contractContexts.get(NETWORK_KEYS.AMOY);
+  const localContext = contractContexts.get(NETWORK_KEYS.LOCAL);
+
+  return {
+    defaultNetwork: NETWORK_KEYS.AMOY,
+    networks: {
+      [NETWORK_KEYS.AMOY]: {
+        key: NETWORK_KEYS.AMOY,
+        label: NETWORK_LABELS[NETWORK_KEYS.AMOY],
+        mode: "production",
+        chainId: amoyContext?.chainId ?? chainId,
+        contractAddress: amoyContext?.contractAddress ?? contractAddress,
+        rpcUrl: amoyContext?.rpcUrl ?? rpcUrl,
+      },
+      [NETWORK_KEYS.LOCAL]: {
+        key: NETWORK_KEYS.LOCAL,
+        label: NETWORK_LABELS[NETWORK_KEYS.LOCAL],
+        mode: "demo",
+        chainId: localContext?.chainId ?? localDemoChainId,
+        contractAddress: localContext?.contractAddress ?? null,
+        rpcUrl: getPublicDemoRpcUrl(baseUrl),
+        note: "Demo mode runs on an embedded Hardhat node and auto-funds verified wallets with free ETH.",
+      },
+    },
+  };
+}
+
+async function shutdownLocalDemoNode() {
+  if (!localDemoProcess || !localDemoStartedByBackend) {
+    return;
+  }
+
+  const childProcess = localDemoProcess;
+
+  await new Promise((resolve) => {
+    childProcess.once("exit", () => {
+      resolve();
+    });
+    childProcess.kill("SIGTERM");
+  });
+}
+
 module.exports = {
-  provider,
-  adminSigner,
-  readContract,
-  writeContract,
+  NETWORK_KEYS,
+  resolveContractNetwork,
   getContractRole,
+  getContractContext,
+  getReadContract,
+  getWriteContract,
+  getNetworkCatalog,
   initializeContractAccess,
-  assertAdminSignerAuthorized,
   sendAdminTransaction,
+  ensureDemoWalletFunds,
+  forwardLocalDemoRpcRequest,
+  shutdownLocalDemoNode,
 };

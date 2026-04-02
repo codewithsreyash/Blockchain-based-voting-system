@@ -57,4 +57,7 @@ module.exports = {
   contractAddress: process.env.CONTRACT_ADDRESS,
   adminPrivateKey: process.env.ADMIN_PRIVATE_KEY,
   verificationBatchSize: parseNumber(process.env.VERIFICATION_BATCH_SIZE, 50),
+  localDemoRpcPort: parseNumber(process.env.LOCAL_DEMO_RPC_PORT, 8545),
+  localDemoChainId: parseNumber(process.env.LOCAL_DEMO_CHAIN_ID, 31337),
+  localDemoFundingEth: process.env.LOCAL_DEMO_FUNDING_ETH || "1",
 };

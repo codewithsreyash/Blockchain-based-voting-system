@@ -1,6 +1,22 @@
 export type UserRole = "admin" | "student" | "teacher";
 export type VerificationStatus = "not_submitted" | "pending" | "verified";
 export type EligibleVoters = "students" | "teachers" | "both" | "none";
+export type AppNetwork = "amoy" | "local";
+
+export interface NetworkDetails {
+  key: AppNetwork;
+  label: string;
+  mode: "production" | "demo";
+  chainId: number;
+  contractAddress: string | null;
+  rpcUrl: string;
+  note?: string;
+}
+
+export interface NetworkStatusResponse {
+  defaultNetwork: AppNetwork;
+  networks: Record<AppNetwork, NetworkDetails>;
+}
 
 export interface User {
   _id: string;

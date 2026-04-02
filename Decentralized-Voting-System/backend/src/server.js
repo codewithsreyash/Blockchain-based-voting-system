@@ -1,7 +1,7 @@
 const app = require("./app");
 const { nodeEnv, port } = require("./config/env");
 const { connectToDatabase, disconnectFromDatabase } = require("./lib/db");
-const { initializeContractAccess } = require("./lib/contract");
+const { getContractContext, initializeContractAccess, shutdownLocalDemoNode, NETWORK_KEYS } = require("./lib/contract");
 
 let server;
 let shuttingDown = false;
@@ -29,6 +29,7 @@ async function shutdown(signal, exitCode = 0) {
     }
 
     await disconnectFromDatabase();
+    await shutdownLocalDemoNode();
   } catch (error) {
     console.error("Error during backend shutdown", error);
     process.exit(1);
@@ -38,13 +39,18 @@ async function shutdown(signal, exitCode = 0) {
 }
 
 async function startServer() {
-  const contractAccess = await initializeContractAccess();
+  await initializeContractAccess();
   await connectToDatabase();
 
   server = app.listen(port, () => {
+    const amoyAccess = getContractContext(NETWORK_KEYS.AMOY);
+    const localDemoAccess = getContractContext(NETWORK_KEYS.LOCAL);
     console.log(`Backend API listening on port ${port} (${nodeEnv})`);
     console.log(
-      `Backend signer ${contractAccess.signerAddress} is authorized for contract ${contractAccess.contractAddress} on chain ${contractAccess.chainId}`
+      `Amoy backend signer is authorized for contract ${amoyAccess.contractAddress} on chain ${amoyAccess.chainId}`
+    );
+    console.log(
+      `Demo mode is running on contract ${localDemoAccess.contractAddress} through local RPC ${localDemoAccess.rpcUrl}`
     );
   });
 }

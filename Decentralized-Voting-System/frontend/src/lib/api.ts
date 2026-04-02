@@ -1,6 +1,14 @@
 "use client";
 
-import type { AuthResponse, Election, ElectionResults, PendingVerificationResponse, User } from "./types";
+import { getStoredAppNetwork } from "./network";
+import type {
+  AuthResponse,
+  Election,
+  ElectionResults,
+  NetworkStatusResponse,
+  PendingVerificationResponse,
+  User,
+} from "./types";
 
 const TOKEN_STORAGE_KEY = "dva-token";
 
@@ -47,6 +55,12 @@ function getApiBaseUrl() {
   return parsedUrl.toString().replace(/\/+$/, "");
 }
 
+function withSelectedNetwork(path: string) {
+  const url = new URL(path, "https://dva.local");
+  url.searchParams.set("network", getStoredAppNetwork());
+  return `${url.pathname}${url.search}`;
+}
+
 export function getAuthToken() {
   if (typeof window === "undefined") {
     return null;
@@ -67,7 +81,7 @@ export function clearAuthToken() {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, options?: { networkAware?: boolean }): Promise<T> {
   const headers = new Headers(init.headers);
   const token = getAuthToken();
 
@@ -76,7 +90,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const requestPath = options?.networkAware ? withSelectedNetwork(path) : path;
+  const response = await fetch(`${getApiBaseUrl()}${requestPath}`, {
     ...init,
     headers,
     cache: "no-store",
@@ -92,6 +107,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  getNetworkStatus: () => request<NetworkStatusResponse>("/networks"),
   signup: (body: Record<string, unknown>) =>
     request<AuthResponse>("/auth/signup", {
       method: "POST",
@@ -117,12 +133,12 @@ export const api = {
   verifyUser: (userId: string) =>
     request<{ user: User; transactionHash: string }>(`/admin/verifications/${userId}`, {
       method: "POST",
-    }),
+    }, { networkAware: true }),
   verifyAll: (role?: "student" | "teacher") =>
     request<{ verifiedCount: number; transactionHashes: string[] }>("/admin/verifications/bulk", {
       method: "POST",
       body: JSON.stringify(role ? { role } : {}),
-    }),
+    }, { networkAware: true }),
   createElection: (body: {
     title: string;
     description: string;
@@ -134,14 +150,15 @@ export const api = {
     request<{ electionId: number | null; transactionHash: string }>("/elections", {
       method: "POST",
       body: JSON.stringify(body),
-    }),
+    }, { networkAware: true }),
   deactivateElection: (electionId: number) =>
     request<{ electionId: number; transactionHash: string; message: string }>(`/elections/${electionId}/deactivate`, {
       method: "PATCH",
-    }),
-  getElectionResults: (electionId: number) => request<ElectionResults>(`/elections/${electionId}/results`),
+    }, { networkAware: true }),
+  getElectionResults: (electionId: number) =>
+    request<ElectionResults>(`/elections/${electionId}/results`, {}, { networkAware: true }),
   listElections: async () => {
-    const response = await request<{ elections: Election[]; message?: string }>("/elections");
+    const response = await request<{ elections: Election[]; message?: string }>("/elections", {}, { networkAware: true });
     return response;
   },
 };

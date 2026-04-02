@@ -2,10 +2,16 @@ const mongoose = require("mongoose");
 
 const electionSchema = new mongoose.Schema(
   {
+    network: {
+      type: String,
+      enum: ["amoy", "local"],
+      required: true,
+      default: "amoy",
+      index: true,
+    },
     electionId: {
       type: Number,
       required: true,
-      unique: true,
       index: true,
     },
     title: {
@@ -53,4 +59,28 @@ const electionSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("Election", electionSchema);
+electionSchema.index({ network: 1, electionId: 1 }, { unique: true });
+
+const Election = mongoose.models.Election || mongoose.model("Election", electionSchema);
+
+async function ensureElectionIndexes() {
+  const collection = Election.collection;
+
+  try {
+    const indexes = await collection.indexes();
+    const legacyIndex = indexes.find((index) => index.name === "electionId_1" && index.unique);
+
+    if (legacyIndex) {
+      await collection.dropIndex("electionId_1");
+    }
+  } catch (error) {
+    if (error.codeName !== "NamespaceNotFound" && error.code !== 26) {
+      console.warn("Unable to inspect election indexes", error);
+    }
+  }
+
+  await Election.syncIndexes();
+}
+
+module.exports = Election;
+module.exports.ensureElectionIndexes = ensureElectionIndexes;

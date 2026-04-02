@@ -4,13 +4,18 @@ const { authenticate, requireRole } = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { createHttpError } = require("../utils/httpError");
 const { chunkArray } = require("../utils/chunk");
-const { getContractRole, sendAdminTransaction } = require("../lib/contract");
+const {
+  ensureDemoWalletFunds,
+  getContractRole,
+  resolveContractNetwork,
+  sendAdminTransaction,
+} = require("../lib/contract");
 const { verificationBatchSize } = require("../config/env");
 
 const router = express.Router();
 const MAX_CONTRACT_BATCH_SIZE = 100;
 
-async function verifyUserBatch(users) {
+async function verifyUserBatch(users, network) {
   const addresses = users.map((user) => user.walletAddress);
   const roles = users.map((user) => getContractRole(user.role));
 
@@ -18,25 +23,38 @@ async function verifyUserBatch(users) {
     const { receipt, gasLimit } = await sendAdminTransaction(
       "verifyVoter",
       [addresses[0], roles[0]],
-      `Automatic verification for ${users[0].email}`
+      `Automatic verification for ${users[0].email}`,
+      network
     );
+    const funding = await ensureDemoWalletFunds(network, addresses[0]);
     return {
       transactionHash: receipt.hash,
       blockNumber: receipt.blockNumber,
       gasLimit,
+      fundingTransactions: funding ? [funding.transactionHash] : [],
     };
   }
 
   const { receipt, gasLimit } = await sendAdminTransaction(
     "verifyVoters",
     [addresses, roles],
-    `Automatic bulk verification for ${users.length} users`
+    `Automatic bulk verification for ${users.length} users`,
+    network
   );
+  const fundingTransactions = [];
+
+  for (const address of addresses) {
+    const funding = await ensureDemoWalletFunds(network, address);
+    if (funding) {
+      fundingTransactions.push(funding.transactionHash);
+    }
+  }
 
   return {
     transactionHash: receipt.hash,
     blockNumber: receipt.blockNumber,
     gasLimit,
+    fundingTransactions,
   };
 }
 
@@ -70,6 +88,7 @@ router.post(
   authenticate,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const roleFilter = req.body.role === "student" || req.body.role === "teacher" ? req.body.role : undefined;
     const query = {
       verificationStatus: "pending",
@@ -97,13 +116,14 @@ router.post(
 
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       const batch = batches[batchIndex];
-      const verification = await verifyUserBatch(batch);
+      const verification = await verifyUserBatch(batch, network);
       transactionHashes.push(verification.transactionHash);
       batchResults.push({
         batchNumber: batchIndex + 1,
         userCount: batch.length,
         transactionHash: verification.transactionHash,
         gasLimit: verification.gasLimit,
+        fundingTransactions: verification.fundingTransactions,
       });
       verifiedCount += batch.length;
 
@@ -120,6 +140,7 @@ router.post(
     }
 
     res.json({
+      network,
       verifiedCount,
       batchCount: batches.length,
       transactionHashes,
@@ -133,6 +154,7 @@ router.post(
   authenticate,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
     const user = await User.findById(req.params.userId);
 
     if (!user) {
@@ -147,7 +169,7 @@ router.post(
       throw createHttpError(400, "User is not pending verification");
     }
 
-    const verification = await verifyUserBatch([user]);
+    const verification = await verifyUserBatch([user], network);
 
     const updatedUser = await User.findByIdAndUpdate(
       user._id,
@@ -160,10 +182,12 @@ router.post(
     );
 
     res.json({
+      network,
       user: updatedUser,
       transactionHash: verification.transactionHash,
       blockNumber: verification.blockNumber,
       gasLimit: verification.gasLimit,
+      fundingTransactions: verification.fundingTransactions,
     });
   })
 );

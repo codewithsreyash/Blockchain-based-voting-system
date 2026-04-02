@@ -4,6 +4,7 @@ const {
   mongodbServerSelectionTimeoutMs,
   mongodbSocketTimeoutMs,
 } = require("../config/env");
+const { ensureElectionIndexes } = require("../models/Election");
 
 let listenersRegistered = false;
 let connectionPromise = null;
@@ -50,6 +51,7 @@ async function connectToDatabase() {
   }
 
   await connectionPromise;
+  await ensureElectionIndexes();
   return mongoose.connection;
 }
 

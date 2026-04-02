@@ -5,8 +5,10 @@ import Link from "next/link";
 import { PendingVerificationTable } from "../../../components/admin/PendingVerificationTable";
 import { api } from "../../../lib/api";
 import type { User } from "../../../lib/types";
+import { useAppNetwork } from "../../../providers/network-provider";
 
 export default function AdminVerificationsPage() {
+  const { activeNetwork, isDemoMode } = useAppNetwork();
   const [students, setStudents] = useState<User[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
   const [verifyingUserId, setVerifyingUserId] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export default function AdminVerificationsPage() {
 
     try {
       const response = await api.verifyUser(userId);
-      setMessage(`Wallet verified on-chain. Tx: ${response.transactionHash}`);
+      setMessage(`Wallet verified on ${activeNetwork.label}. Tx: ${response.transactionHash}`);
       await loadQueue();
     } catch (verificationError) {
       setError(verificationError instanceof Error ? verificationError.message : "Unable to verify user");
@@ -54,7 +56,7 @@ export default function AdminVerificationsPage() {
     try {
       const response = await api.verifyAll();
       setMessage(
-        `Verified ${response.verifiedCount} users across ${response.transactionHashes.length} blockchain batch(es).`
+        `Verified ${response.verifiedCount} users on ${activeNetwork.label} across ${response.transactionHashes.length} blockchain batch(es).`
       );
       await loadQueue();
     } catch (verificationError) {
@@ -71,6 +73,10 @@ export default function AdminVerificationsPage() {
         <h1>Approve pending student and teacher wallets</h1>
         <p className="muted">
           Clicking verify writes the approved address and role to the whitelist contract through the backend admin signer.
+        </p>
+        <p className="message">
+          Verification target: <strong>{activeNetwork.label}</strong>
+          {isDemoMode ? " with automatic free demo ETH funding for verified wallets." : "."}
         </p>
         <div className="row-between">
           <button className="button" type="button" onClick={handleVerifyAll} disabled={bulkLoading}>

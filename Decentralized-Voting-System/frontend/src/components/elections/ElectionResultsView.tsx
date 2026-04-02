@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import type { ElectionResults } from "../../lib/types";
+import { useAppNetwork } from "../../providers/network-provider";
 
 function toReadableDate(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString();
@@ -17,6 +18,7 @@ function formatPercentage(percentage: number) {
 export function ElectionResultsView() {
   const params = useParams<{ electionId: string }>();
   const electionId = Number(params.electionId);
+  const { activeNetwork, selectedNetwork } = useAppNetwork();
   const [results, setResults] = useState<ElectionResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,7 +53,7 @@ export function ElectionResultsView() {
     return () => {
       active = false;
     };
-  }, [electionId]);
+  }, [electionId, selectedNetwork]);
 
   const winnerSummary =
     !results || results.totalVotes === 0
@@ -89,6 +91,7 @@ export function ElectionResultsView() {
             <p className="eyebrow">Final Results</p>
             <h1>{results.election.title}</h1>
             <p className="muted">{results.election.description}</p>
+            <p className="message">Reading final tally from {activeNetwork.label}.</p>
 
             <div className="stats-grid">
               <div className="info-card">
