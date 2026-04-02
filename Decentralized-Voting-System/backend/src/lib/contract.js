@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 const { ethers } = require("ethers");
@@ -28,6 +27,7 @@ const LOCAL_DEMO_RPC_PATH = "/rpc/local";
 const contractContexts = new Map();
 let localDemoProcess = null;
 let localDemoStartedByBackend = false;
+let localDemoContextPromise = null;
 
 function loadArtifact() {
   try {
@@ -167,34 +167,26 @@ function getBackendRootDir() {
   return path.resolve(__dirname, "../..");
 }
 
-function resolveHardhatBinary() {
-  const executable = process.platform === "win32" ? "hardhat.cmd" : "hardhat";
-  const binaryPath = path.resolve(getBackendRootDir(), "node_modules/.bin", executable);
-
-  if (!fs.existsSync(binaryPath)) {
+function resolveHardhatCliScript() {
+  try {
+    return require.resolve("hardhat/internal/cli/bootstrap.js", {
+      paths: [getBackendRootDir()],
+    });
+  } catch {
     throw buildContractError(
-      "Missing Hardhat runtime in backend/node_modules. Run `npm install` in the backend before starting demo mode.",
+      "Missing Hardhat runtime in the backend dependency tree. Run `npm install` in the backend before starting demo mode.",
       500
     );
   }
-
-  return binaryPath;
 }
 
-function spawnHardhatNode(binaryPath, backendRootDir) {
-  const args = ["node", "--hostname", LOCAL_DEMO_HOST, "--port", String(localDemoRpcPort)];
+function spawnHardhatNode(hardhatCliScript, backendRootDir) {
+  const args = [hardhatCliScript, "node", "--hostname", LOCAL_DEMO_HOST, "--port", String(localDemoRpcPort)];
 
-  if (process.platform === "win32") {
-    return spawn("cmd.exe", ["/d", "/s", "/c", binaryPath, ...args], {
-      cwd: backendRootDir,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-  }
-
-  return spawn(binaryPath, args, {
+  return spawn(process.execPath, args, {
     cwd: backendRootDir,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
 }
 
@@ -284,16 +276,46 @@ async function waitForDemoRpc(childProcess) {
   throw buildContractError("Embedded Hardhat demo node did not become ready within 30 seconds.", 500);
 }
 
+async function stopTrackedLocalDemoNode() {
+  if (!localDemoProcess || !localDemoStartedByBackend) {
+    return;
+  }
+
+  const childProcess = localDemoProcess;
+
+  await new Promise((resolve) => {
+    if (childProcess.exitCode !== null) {
+      resolve();
+      return;
+    }
+
+    childProcess.once("exit", () => {
+      resolve();
+    });
+
+    try {
+      childProcess.kill("SIGTERM");
+    } catch {
+      resolve();
+    }
+  });
+}
+
 async function ensureLocalDemoProvider() {
   const existingProvider = await connectToExistingDemoProvider();
   if (existingProvider) {
     return existingProvider;
   }
 
-  const binaryPath = resolveHardhatBinary();
+  if (localDemoProcess && localDemoProcess.exitCode === null && localDemoStartedByBackend) {
+    console.warn("Embedded demo node became unresponsive. Restarting it before serving the next JSON-RPC request.");
+    await stopTrackedLocalDemoNode();
+  }
+
+  const hardhatCliScript = resolveHardhatCliScript();
   const backendRootDir = getBackendRootDir();
 
-  localDemoProcess = spawnHardhatNode(binaryPath, backendRootDir);
+  localDemoProcess = spawnHardhatNode(hardhatCliScript, backendRootDir);
   localDemoStartedByBackend = true;
 
   localDemoProcess.stdout.on("data", (chunk) => {
@@ -313,6 +335,16 @@ async function ensureLocalDemoProvider() {
   });
 
   return waitForDemoRpc(localDemoProcess);
+}
+
+async function isLocalDemoContextHealthy(context) {
+  try {
+    await assertChainMatchesConfig(context);
+    await context.readContract.owner();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function initializeAmoyContext() {
@@ -362,12 +394,36 @@ async function initializeLocalDemoContext() {
   return context;
 }
 
+async function ensureLocalDemoContextReady() {
+  const existingContext = contractContexts.get(NETWORK_KEYS.LOCAL);
+
+  if (existingContext && (await isLocalDemoContextHealthy(existingContext))) {
+    return existingContext;
+  }
+
+  if (existingContext) {
+    console.warn("Demo Hardhat context became stale. Reinitializing the embedded node and redeploying the demo contract.");
+    contractContexts.delete(NETWORK_KEYS.LOCAL);
+  }
+
+  if (!localDemoContextPromise) {
+    localDemoContextPromise = (async () => {
+      const localContext = await initializeLocalDemoContext();
+      contractContexts.set(NETWORK_KEYS.LOCAL, localContext);
+      return localContext;
+    })().finally(() => {
+      localDemoContextPromise = null;
+    });
+  }
+
+  return localDemoContextPromise;
+}
+
 async function initializeContractAccess() {
   const amoyContext = await initializeAmoyContext();
   contractContexts.set(NETWORK_KEYS.AMOY, amoyContext);
 
-  const localContext = await initializeLocalDemoContext();
-  contractContexts.set(NETWORK_KEYS.LOCAL, localContext);
+  await ensureLocalDemoContextReady();
 
   return getNetworkCatalog();
 }
@@ -391,6 +447,24 @@ function getWriteContract(requestedNetwork) {
   return getContractContext(requestedNetwork).writeContract;
 }
 
+async function getReadyContractContext(requestedNetwork) {
+  const networkKey = resolveContractNetwork(requestedNetwork);
+
+  if (networkKey === NETWORK_KEYS.LOCAL) {
+    return ensureLocalDemoContextReady();
+  }
+
+  return getContractContext(networkKey);
+}
+
+async function getReadContractAsync(requestedNetwork) {
+  return (await getReadyContractContext(requestedNetwork)).readContract;
+}
+
+async function getWriteContractAsync(requestedNetwork) {
+  return (await getReadyContractContext(requestedNetwork)).writeContract;
+}
+
 const contractRoleMap = {
   admin: 1,
   student: 2,
@@ -407,7 +481,7 @@ function getContractRole(role) {
 }
 
 async function sendAdminTransaction(methodName, args, actionLabel, requestedNetwork = NETWORK_KEYS.AMOY) {
-  const context = getContractContext(requestedNetwork);
+  const context = await getReadyContractContext(requestedNetwork);
   await assertAdminSignerAuthorized(context);
 
   const signerAddress = await resolveSignerAddress(context.adminSigner);
@@ -473,7 +547,7 @@ async function ensureDemoWalletFunds(requestedNetwork, walletAddress) {
     return null;
   }
 
-  const context = getContractContext(NETWORK_KEYS.LOCAL);
+  const context = await getReadyContractContext(NETWORK_KEYS.LOCAL);
   const normalizedAddress = ethers.getAddress(walletAddress);
   const currentBalance = await context.provider.getBalance(normalizedAddress);
   const fundingAmount = ethers.parseEther(localDemoFundingEth);
@@ -496,30 +570,50 @@ async function ensureDemoWalletFunds(requestedNetwork, walletAddress) {
 }
 
 async function forwardLocalDemoRpcRequest(body) {
-  getContractContext(NETWORK_KEYS.LOCAL);
-
-  let response;
-
-  try {
-    response = await fetch(LOCAL_DEMO_RPC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body ?? {}),
-    });
-  } catch (error) {
-    throw buildContractError(
-      `Unable to reach the embedded demo RPC: ${getReadableContractError(error, "JSON-RPC bridge failed.")}`,
-      502
-    );
+  if (typeof body === "undefined") {
+    throw buildContractError("JSON-RPC requests to /rpc/local must include a JSON body.", 400);
   }
 
-  return {
-    status: response.status,
-    contentType: response.headers.get("content-type") || "application/json",
-    payload: await response.text(),
-  };
+  await ensureLocalDemoContextReady();
+
+  async function proxyRequest() {
+    let response;
+
+    try {
+      response = await fetch(LOCAL_DEMO_RPC_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      throw buildContractError(
+        `Unable to reach the embedded demo RPC: ${getReadableContractError(error, "JSON-RPC bridge failed.")}`,
+        502
+      );
+    }
+
+    return {
+      status: response.status,
+      contentType: response.headers.get("content-type") || "application/json; charset=utf-8",
+      payload: await response.text(),
+    };
+  }
+
+  try {
+    return await proxyRequest();
+  } catch (error) {
+    if (error?.statusCode !== 502) {
+      throw error;
+    }
+
+    console.warn("Embedded demo RPC bridge lost its upstream connection. Restarting the demo node and retrying once.");
+    contractContexts.delete(NETWORK_KEYS.LOCAL);
+    await stopTrackedLocalDemoNode();
+    await ensureLocalDemoContextReady();
+    return proxyRequest();
+  }
 }
 
 function getPublicDemoRpcUrl(baseUrl) {
@@ -561,18 +655,7 @@ function getNetworkCatalog(baseUrl) {
 }
 
 async function shutdownLocalDemoNode() {
-  if (!localDemoProcess || !localDemoStartedByBackend) {
-    return;
-  }
-
-  const childProcess = localDemoProcess;
-
-  await new Promise((resolve) => {
-    childProcess.once("exit", () => {
-      resolve();
-    });
-    childProcess.kill("SIGTERM");
-  });
+  await stopTrackedLocalDemoNode();
 }
 
 module.exports = {
@@ -581,7 +664,9 @@ module.exports = {
   getContractRole,
   getContractContext,
   getReadContract,
+  getReadContractAsync,
   getWriteContract,
+  getWriteContractAsync,
   getNetworkCatalog,
   initializeContractAccess,
   sendAdminTransaction,

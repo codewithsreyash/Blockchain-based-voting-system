@@ -1,4 +1,4 @@
-const { getReadContract } = require("../lib/contract");
+const { getReadContractAsync } = require("../lib/contract");
 const ElectionRecord = require("../models/Election");
 
 function mapEligibleVoters(studentsAllowed, teachersAllowed) {
@@ -74,7 +74,7 @@ async function fetchElection(network, electionId, options = {}) {
     throw error;
   }
 
-  const readContract = getReadContract(network);
+  const readContract = await getReadContractAsync(network);
   const electionData = await readContract.getElection(electionId);
 
   const election = {
@@ -217,7 +217,7 @@ async function fetchElectionResults(network, electionId) {
 }
 
 async function fetchAllElections(network, options = {}) {
-  const readContract = getReadContract(network);
+  const readContract = await getReadContractAsync(network);
   const count = Number(await readContract.electionCount());
   const deletedElectionIds = await getDeletedElectionIdSet(network);
   const electionIds = Array.from({ length: count }, (_value, index) => index + 1).filter(

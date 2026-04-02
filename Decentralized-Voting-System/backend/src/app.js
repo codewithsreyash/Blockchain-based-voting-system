@@ -26,7 +26,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 
 app.get("/api/health", (_req, res) => {
@@ -47,6 +47,9 @@ app.post(
     res.send(rpcResponse.payload);
   })
 );
+app.all("/rpc/local", (_req, res) => {
+  res.status(405).json({ message: "Use POST for JSON-RPC requests to /rpc/local." });
+});
 
 app.use((_req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -60,7 +63,7 @@ app.use((error, _req, res, _next) => {
     });
   }
 
-  const statusCode = error.statusCode || 500;
+  const statusCode = error.statusCode || error.status || 500;
   return res.status(statusCode).json({
     message: error.message || "Internal server error",
     details: error.details,

@@ -3,7 +3,7 @@ const { z } = require("zod");
 const { authenticate, requireRole } = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { createHttpError } = require("../utils/httpError");
-const { getWriteContract, resolveContractNetwork, sendAdminTransaction } = require("../lib/contract");
+const { getWriteContractAsync, resolveContractNetwork, sendAdminTransaction } = require("../lib/contract");
 const {
   fetchElection,
   fetchAllElections,
@@ -156,7 +156,8 @@ router.post(
       "Election creation",
       network
     );
-    const electionId = parseElectionId(receipt, getWriteContract(network).interface);
+    const writeContract = await getWriteContractAsync(network);
+    const electionId = parseElectionId(receipt, writeContract.interface);
     await syncElectionRecordSafely(network, electionId);
 
     res.status(201).json({
@@ -164,7 +165,7 @@ router.post(
       electionId,
       transactionHash: receipt.hash,
       blockNumber: receipt.blockNumber,
-      contractAddress: getWriteContract(network).target,
+      contractAddress: writeContract.target,
       gasLimit,
     });
   })
