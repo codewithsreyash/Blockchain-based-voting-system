@@ -140,6 +140,8 @@ function buildElectionRecordUpdate(election) {
     teachersAllowed: election.teachersAllowed,
     eligibleVoters: election.eligibleVoters,
     candidateCount: election.candidateCount,
+    deletedAt: null,
+    deletedBy: null,
   };
 }
 

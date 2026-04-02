@@ -117,7 +117,7 @@ async function syncElectionRecordSafely(network, electionId) {
   }
 
   try {
-    const election = await fetchElection(network, electionId);
+    const election = await fetchElection(network, electionId, { includeDeleted: true });
     await syncElectionRecord(network, election);
   } catch (error) {
     console.error(`Unable to sync election ${electionId} metadata for ${network}`, error);

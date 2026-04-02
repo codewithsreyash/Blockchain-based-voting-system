@@ -14,6 +14,36 @@ const { forwardLocalDemoRpcRequest } = require("./lib/contract");
 const app = express();
 app.set("trust proxy", true);
 
+function getRpcMethodLabels(body) {
+  if (Array.isArray(body)) {
+    return body.map((entry) => entry?.method || "unknown");
+  }
+
+  if (body && typeof body === "object") {
+    return [body.method || "unknown"];
+  }
+
+  return ["unknown"];
+}
+
+function logRpcBridgeErrors(methodLabels, payload) {
+  try {
+    const parsedPayload = JSON.parse(payload);
+    const responses = Array.isArray(parsedPayload) ? parsedPayload : [parsedPayload];
+    const errors = responses.filter((response) => response?.error);
+
+    if (!errors.length) {
+      return;
+    }
+
+    for (const errorResponse of errors) {
+      console.error(`[rpc/local] upstream error for ${methodLabels.join(", ")}:`, errorResponse.error);
+    }
+  } catch {
+    // Preserve the upstream payload exactly as received even if it is not JSON.
+  }
+}
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -41,10 +71,19 @@ app.use("/api/elections", electionsRoutes);
 app.post(
   "/rpc/local",
   asyncHandler(async (req, res) => {
-    const rpcResponse = await forwardLocalDemoRpcRequest(req.body);
-    res.status(rpcResponse.status);
-    res.set("Content-Type", rpcResponse.contentType);
-    res.send(rpcResponse.payload);
+    const methodLabels = getRpcMethodLabels(req.body);
+    console.log(`[rpc/local] forwarding ${methodLabels.join(", ")}`);
+
+    try {
+      const rpcResponse = await forwardLocalDemoRpcRequest(req.body);
+      logRpcBridgeErrors(methodLabels, rpcResponse.payload);
+      res.status(rpcResponse.status);
+      res.set("Content-Type", rpcResponse.contentType);
+      res.send(rpcResponse.payload);
+    } catch (error) {
+      console.error(`[rpc/local] bridge failure for ${methodLabels.join(", ")}:`, error);
+      throw error;
+    }
   })
 );
 app.all("/rpc/local", (_req, res) => {
