@@ -45,7 +45,35 @@ function shouldRevealVoteCounts(election, includeVoteCounts) {
   return includeVoteCounts || Math.floor(Date.now() / 1000) >= election.endTime;
 }
 
+async function getDeletedElectionIdSet(network) {
+  const deletedRecords = await ElectionRecord.find(
+    {
+      network,
+      deletedAt: { $ne: null },
+    },
+    { electionId: 1 }
+  ).lean();
+
+  return new Set(deletedRecords.map((record) => record.electionId));
+}
+
+async function isElectionDeleted(network, electionId) {
+  const deletedRecord = await ElectionRecord.exists({
+    network,
+    electionId,
+    deletedAt: { $ne: null },
+  });
+
+  return Boolean(deletedRecord);
+}
+
 async function fetchElection(network, electionId, options = {}) {
+  if (options.includeDeleted !== true && (await isElectionDeleted(network, electionId))) {
+    const error = new Error("Election has been deleted from the dashboard");
+    error.code = "ELECTION_DELETED";
+    throw error;
+  }
+
   const readContract = getReadContract(network);
   const electionData = await readContract.getElection(electionId);
 
@@ -134,6 +162,23 @@ async function syncElectionRecord(network, election) {
   return serializeElectionRecord(record);
 }
 
+async function deleteElectionRecord(network, electionId, deletedBy) {
+  const record = await ElectionRecord.findOneAndUpdate(
+    { network, electionId },
+    {
+      $set: {
+        deletedAt: new Date(),
+        deletedBy: deletedBy || null,
+      },
+    },
+    {
+      new: true,
+    }
+  );
+
+  return record ? serializeElectionRecord(record) : null;
+}
+
 async function getElectionMetadata(network, electionId, fallbackElection) {
   const existingRecord = await ElectionRecord.findOne({ network, electionId }).lean();
 
@@ -174,16 +219,21 @@ async function fetchElectionResults(network, electionId) {
 async function fetchAllElections(network, options = {}) {
   const readContract = getReadContract(network);
   const count = Number(await readContract.electionCount());
-  const electionIds = Array.from({ length: count }, (_value, index) => index + 1);
+  const deletedElectionIds = await getDeletedElectionIdSet(network);
+  const electionIds = Array.from({ length: count }, (_value, index) => index + 1).filter(
+    (electionId) => !deletedElectionIds.has(electionId)
+  );
 
   return Promise.all(electionIds.map((electionId) => fetchElection(network, electionId, options)));
 }
 
 module.exports = {
+  deleteElectionRecord,
   fetchElection,
   fetchAllElections,
   fetchElectionResults,
   getElectionMetadata,
+  isElectionDeleted,
   isElectionEligibleToRole,
   isElectionVisibleToRole,
   syncElectionRecord,

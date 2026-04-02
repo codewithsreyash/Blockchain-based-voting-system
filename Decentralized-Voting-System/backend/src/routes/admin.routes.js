@@ -5,6 +5,12 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { createHttpError } = require("../utils/httpError");
 const { chunkArray } = require("../utils/chunk");
 const {
+  deleteElectionRecord,
+  fetchElection,
+  isElectionDeleted,
+  syncElectionRecord,
+} = require("../utils/elections");
+const {
   ensureDemoWalletFunds,
   getContractRole,
   resolveContractNetwork,
@@ -14,6 +20,16 @@ const { verificationBatchSize } = require("../config/env");
 
 const router = express.Router();
 const MAX_CONTRACT_BATCH_SIZE = 100;
+
+function parseElectionIdParam(electionIdParam) {
+  const electionId = Number(electionIdParam);
+
+  if (!Number.isInteger(electionId) || electionId <= 0) {
+    throw createHttpError(400, "Election id must be a positive integer");
+  }
+
+  return electionId;
+}
 
 async function verifyUserBatch(users, network) {
   const addresses = users.map((user) => user.walletAddress);
@@ -188,6 +204,37 @@ router.post(
       blockNumber: verification.blockNumber,
       gasLimit: verification.gasLimit,
       fundingTransactions: verification.fundingTransactions,
+    });
+  })
+);
+
+router.delete(
+  "/elections/:electionId",
+  authenticate,
+  requireRole("admin"),
+  asyncHandler(async (req, res) => {
+    const network = resolveContractNetwork(req.query.network);
+    const electionId = parseElectionIdParam(req.params.electionId);
+
+    if (await isElectionDeleted(network, electionId)) {
+      throw createHttpError(400, "Election is already deleted from the dashboard");
+    }
+
+    let election;
+
+    try {
+      election = await fetchElection(network, electionId, { includeDeleted: true });
+    } catch (error) {
+      throw createHttpError(404, "Election not found");
+    }
+
+    await syncElectionRecord(network, election);
+    await deleteElectionRecord(network, electionId, req.user._id);
+
+    res.json({
+      network,
+      electionId,
+      message: `Election "${election.title}" deleted from the dashboard`,
     });
   })
 );

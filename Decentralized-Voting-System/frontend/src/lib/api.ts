@@ -240,6 +240,10 @@ export const api = {
     request<{ electionId: number; transactionHash: string; message: string }>(`/elections/${electionId}/deactivate`, {
       method: "PATCH",
     }, { networkAware: true }),
+  deleteElection: (electionId: number) =>
+    request<{ electionId: number; message: string }>(`/admin/elections/${electionId}`, {
+      method: "DELETE",
+    }, { networkAware: true }),
   getElectionResults: (electionId: number) =>
     request<ElectionResults>(`/elections/${electionId}/results`, {}, { networkAware: true }),
   listElections: async () => {

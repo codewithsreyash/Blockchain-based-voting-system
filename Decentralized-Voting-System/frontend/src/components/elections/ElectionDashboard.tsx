@@ -80,6 +80,7 @@ export function ElectionDashboard() {
   const [isMounted, setIsMounted] = useState(false);
   const [currentUnixTime, setCurrentUnixTime] = useState(0);
   const [deactivatingElectionId, setDeactivatingElectionId] = useState<number | null>(null);
+  const [deletingElectionId, setDeletingElectionId] = useState<number | null>(null);
   const [alreadyVotedByElection, setAlreadyVotedByElection] = useState<Record<number, boolean>>({});
 
   const contractAddress = activeNetwork.contractAddress as `0x${string}` | null;
@@ -313,6 +314,31 @@ export function ElectionDashboard() {
     }
   }
 
+  async function deleteElection(election: Election) {
+    const confirmed = window.confirm(
+      `Delete election "${election.title}" from the dashboard? This hides it from the app UI but does not erase it from the blockchain.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingElectionId(election.id);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await api.deleteElection(election.id);
+      setMessage(response.message);
+      const refreshed = await api.listElections();
+      setElections(refreshed.elections);
+    } catch (deletionError) {
+      setError(deletionError instanceof Error ? deletionError.message : "Unable to delete election");
+    } finally {
+      setDeletingElectionId(null);
+    }
+  }
+
   return (
     <div className="stack-xl">
       <div className="panel hero-panel">
@@ -449,18 +475,28 @@ export function ElectionDashboard() {
                 {alreadyVoted ? <p className="message">{alreadyVotedNotice}</p> : null}
 
                 {user?.role === "admin" ? (
-                  <button
-                    className="button secondary"
-                    type="button"
-                    onClick={() => hideElection(election)}
-                    disabled={!canHideElection || deactivatingElectionId === election.id}
-                  >
-                    {deactivatingElectionId === election.id
-                      ? "Hiding election..."
-                      : canHideElection
-                        ? "Hide election"
-                        : "Hide after close"}
-                  </button>
+                  <div className="stack-sm">
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => hideElection(election)}
+                      disabled={!canHideElection || deactivatingElectionId === election.id}
+                    >
+                      {deactivatingElectionId === election.id
+                        ? "Hiding election..."
+                        : canHideElection
+                          ? "Hide election"
+                          : "Hide after close"}
+                    </button>
+                    <button
+                      className="button secondary"
+                      type="button"
+                      onClick={() => deleteElection(election)}
+                      disabled={deletingElectionId === election.id}
+                    >
+                      {deletingElectionId === election.id ? "Deleting election..." : "Delete election"}
+                    </button>
+                  </div>
                 ) : null}
               </section>
             );
