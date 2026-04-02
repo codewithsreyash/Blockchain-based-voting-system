@@ -3,19 +3,39 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, setAuthToken } from "../../lib/api";
+import { api, getApiFieldErrors, getApiFormErrors, setAuthToken } from "../../lib/api";
+
+type LoginFieldName = "email" | "password";
 
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<LoginFieldName, string[]>>>({});
   const [loading, setLoading] = useState(false);
+
+  function clearFieldError(fieldName: LoginFieldName) {
+    setFieldErrors((current) => {
+      if (!current[fieldName]) {
+        return current;
+      }
+
+      const nextErrors = { ...current };
+      delete nextErrors[fieldName];
+      return nextErrors;
+    });
+  }
+
+  function getFieldErrorMessages(fieldName: LoginFieldName) {
+    return fieldErrors[fieldName] ?? [];
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
-    setError("");
+    setFormErrors([]);
+    setFieldErrors({});
 
     try {
       const response = await api.login({ email, password });
@@ -33,7 +53,8 @@ export function LoginForm() {
 
       router.push("/wallet");
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Unable to sign in");
+      setFormErrors(getApiFormErrors(submissionError, "Unable to sign in"));
+      setFieldErrors(getApiFieldErrors(submissionError) as Partial<Record<LoginFieldName, string[]>>);
     } finally {
       setLoading(false);
     }
@@ -54,9 +75,18 @@ export function LoginForm() {
             type="email"
             placeholder="name@college.edu"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              clearFieldError("email");
+            }}
+            aria-invalid={getFieldErrorMessages("email").length > 0}
             required
           />
+          {getFieldErrorMessages("email").map((errorMessage) => (
+            <small className="field-error" key={`email-${errorMessage}`}>
+              {errorMessage}
+            </small>
+          ))}
         </label>
 
         <label className="field">
@@ -65,12 +95,29 @@ export function LoginForm() {
             type="password"
             placeholder="Minimum 8 characters"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              clearFieldError("password");
+            }}
+            aria-invalid={getFieldErrorMessages("password").length > 0}
             required
           />
+          {getFieldErrorMessages("password").map((errorMessage) => (
+            <small className="field-error" key={`password-${errorMessage}`}>
+              {errorMessage}
+            </small>
+          ))}
         </label>
 
-        {error ? <p className="message error">{error}</p> : null}
+        {formErrors.length > 0 ? (
+          <div className="stack-sm">
+            {formErrors.map((errorMessage) => (
+              <p className="message error" key={errorMessage}>
+                {errorMessage}
+              </p>
+            ))}
+          </div>
+        ) : null}
 
         <button className="button" type="submit" disabled={loading}>
           {loading ? "Signing in..." : "Sign in"}

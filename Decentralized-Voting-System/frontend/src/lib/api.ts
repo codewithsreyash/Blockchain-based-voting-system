@@ -27,6 +27,88 @@ export class ApiError extends Error {
   }
 }
 
+function normalizeApiErrorDetails(details: unknown, message?: string): ApiErrorDetails | undefined {
+  if (!details || typeof details !== "object") {
+    return message ? { formErrors: [message] } : undefined;
+  }
+
+  const normalizedDetails = details as ApiErrorDetails;
+  const formErrors = (normalizedDetails.formErrors ?? []).filter(Boolean);
+  const fieldErrors = Object.fromEntries(
+    Object.entries(normalizedDetails.fieldErrors ?? {}).map(([fieldName, fieldMessages]) => [
+      fieldName,
+      (fieldMessages ?? []).filter(Boolean),
+    ])
+  );
+  const hasFieldErrors = Object.values(fieldErrors).some((fieldMessages) => fieldMessages.length > 0);
+
+  if (!formErrors.length && !hasFieldErrors && message) {
+    return { formErrors: [message] };
+  }
+
+  return {
+    formErrors,
+    fieldErrors,
+  };
+}
+
+function collectApiErrorMessages(details?: ApiErrorDetails) {
+  if (!details) {
+    return [];
+  }
+
+  const fieldErrors = Object.values(details.fieldErrors ?? {}).flat().filter(Boolean) as string[];
+  const formErrors = (details.formErrors ?? []).filter(Boolean);
+  return Array.from(new Set([...formErrors, ...fieldErrors]));
+}
+
+export function getApiErrorMessages(error: unknown, fallbackMessage = "Request failed") {
+  if (error instanceof ApiError) {
+    const messages = collectApiErrorMessages(error.details);
+    if (messages.length > 0) {
+      return messages;
+    }
+
+    return [error.message || fallbackMessage];
+  }
+
+  if (error instanceof Error && error.message) {
+    return [error.message];
+  }
+
+  return [fallbackMessage];
+}
+
+export function getApiFormErrors(error: unknown, fallbackMessage = "Request failed") {
+  if (error instanceof ApiError) {
+    const formErrors = (error.details?.formErrors ?? []).filter(Boolean);
+
+    if (formErrors.length > 0) {
+      return Array.from(new Set(formErrors));
+    }
+
+    if (!error.details || collectApiErrorMessages(error.details).length === 0) {
+      return [error.message || fallbackMessage];
+    }
+
+    return [];
+  }
+
+  if (error instanceof Error && error.message) {
+    return [error.message];
+  }
+
+  return [fallbackMessage];
+}
+
+export function getApiFieldErrors(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.details?.fieldErrors ?? {};
+  }
+
+  return {};
+}
+
 function getApiBaseUrl() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 
@@ -100,7 +182,10 @@ async function request<T>(path: string, init: RequestInit = {}, options?: { netw
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new ApiError(payload.message || "Request failed", payload.details);
+    const details = normalizeApiErrorDetails(payload.details, payload.message);
+    const normalizedMessage = collectApiErrorMessages(details)[0] || payload.message || "Request failed";
+
+    throw new ApiError(normalizedMessage, details);
   }
 
   return payload as T;
