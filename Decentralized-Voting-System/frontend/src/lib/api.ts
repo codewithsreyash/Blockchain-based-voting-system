@@ -11,7 +11,25 @@ function getApiBaseUrl() {
     throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
   }
 
-  return apiBaseUrl.replace(/\/+$/, "");
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(apiBaseUrl);
+  } catch {
+    throw new Error("Invalid NEXT_PUBLIC_API_BASE_URL");
+  }
+
+  const normalizedPathname = parsedUrl.pathname.replace(/\/+$/, "");
+
+  if (!normalizedPathname || normalizedPathname === "/") {
+    parsedUrl.pathname = "/api";
+  } else if (!normalizedPathname.endsWith("/api")) {
+    parsedUrl.pathname = `${normalizedPathname}/api`;
+  } else {
+    parsedUrl.pathname = normalizedPathname;
+  }
+
+  return parsedUrl.toString().replace(/\/+$/, "");
 }
 
 export function getAuthToken() {
