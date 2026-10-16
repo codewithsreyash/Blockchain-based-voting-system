@@ -164,6 +164,16 @@ export function ElectionDashboard() {
       return;
     }
 
+    const now = Math.floor(Date.now() / 1000);
+    if (now >= election.endTime) {
+      setError(`Voting has ended for this ballot. The voting window closed at ${toReadableDate(election.endTime)}.`);
+      return;
+    }
+    if (now < election.startTime) {
+      setError(`Voting has not started yet. The voting window opens at ${toReadableDate(election.startTime)}.`);
+      return;
+    }
+
     setError("");
     setMessage("");
     setTxHash(null);
@@ -178,6 +188,7 @@ export function ElectionDashboard() {
         abi: votingAbi,
         functionName: "vote",
         args: [BigInt(election.id), BigInt(candidateId)],
+        chain: targetChain,
         chainId: targetChainId,
       });
 
@@ -190,9 +201,21 @@ export function ElectionDashboard() {
       setAlreadyVotedByElection((prev) => ({ ...prev, [election.id]: true }));
     } catch (voteError: unknown) {
       const err = voteError as Error;
-      if (err?.message?.includes("Vote already cast")) {
+      const rawMsg = err?.message || "";
+
+      if (rawMsg.includes("Voting has ended") || rawMsg.includes("0x10566f74696e672068617320656e646564")) {
+        setError(`Voting has ended for Ballot #${election.id}. The voting window concluded at ${toReadableDate(election.endTime)}.`);
+      } else if (rawMsg.includes("Voting has not started")) {
+        setError(`Voting has not started yet. The window opens at ${toReadableDate(election.startTime)}.`);
+      } else if (rawMsg.includes("Vote already cast")) {
         setAlreadyVotedByElection((prev) => ({ ...prev, [election.id]: true }));
         setMessage(alreadyVotedNotice);
+      } else if (rawMsg.includes("Wallet is not verified")) {
+        setError("Your connected wallet address has not been verified on-chain. Please request administrative whitelisting.");
+      } else if (rawMsg.includes("Role is not eligible")) {
+        setError("Your voter role is not eligible to vote in this particular election.");
+      } else if (rawMsg.includes("returned too many errors") || rawMsg.includes("429")) {
+        setError("The public Polygon Amoy RPC endpoint experienced rate-limiting. Please update your MetaMask RPC URL to an Alchemy RPC (https://polygon-amoy.g.alchemy.com/v2/...) or retry in a moment.");
       } else {
         setError(err?.message || "Transaction failed. Please ensure you are a verified voter.");
       }

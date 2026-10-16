@@ -1,5 +1,5 @@
 import { defineChain, type Chain } from "viem";
-import { createConfig, http } from "wagmi";
+import { createConfig, http, fallback } from "wagmi";
 import { injected } from "@wagmi/core";
 import { walletConnect } from "@wagmi/connectors";
 import { polygonAmoy } from "wagmi/chains";
@@ -52,7 +52,9 @@ const demoHardhatChain = defineChain({
   testnet: true,
 });
 
-const amoyRpcUrl = configuredAmoyRpcUrl ?? polygonAmoy.rpcUrls.default.http[0];
+const amoyRpcUrl =
+  configuredAmoyRpcUrl ||
+  "https://polygon-amoy.g.alchemy.com/v2/75_3FkknbchD8uZ0ZQSoP";
 const walletMetadataUrl =
   configuredAppUrl ??
   (typeof window !== "undefined" ? window.location.origin : getOrigin(configuredApiBaseUrl));
@@ -73,10 +75,6 @@ const walletConnectConnector =
     : null;
 const connectors = walletConnectConnector ? [injected(), walletConnectConnector] : [injected()];
 
-if (!amoyRpcUrl) {
-  throw new Error("Missing NEXT_PUBLIC_RPC_URL for Polygon Amoy.");
-}
-
 export const chainByAppNetwork: Record<AppNetwork, Chain> = {
   amoy: polygonAmoy,
   local: demoHardhatChain,
@@ -86,7 +84,13 @@ export const wagmiConfig = createConfig({
   chains: wagmiChains,
   connectors,
   transports: {
-    [polygonAmoy.id]: http(amoyRpcUrl),
+    [polygonAmoy.id]: fallback([
+      http(amoyRpcUrl),
+      http("https://polygon-amoy.g.alchemy.com/v2/75_3FkknbchD8uZ0ZQSoP"),
+      http("https://rpc.ankr.com/polygon_amoy"),
+      http("https://polygon-amoy-bor-rpc.publicnode.com"),
+      http(polygonAmoy.rpcUrls.default.http[0]),
+    ]),
     [demoHardhatChain.id]: http(demoRpcUrl),
   },
 });
