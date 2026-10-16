@@ -387,7 +387,45 @@ export function ElectionDashboard() {
       {error && (
         <div className="message error">
           <span className="material-symbols-outlined">error</span>
-          <span>{error}</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
+            <span>{error}</span>
+            {error.includes("MetaMask RPC URL") && (
+              <button
+                type="button"
+                className="button sm"
+                style={{ alignSelf: "flex-start", marginTop: "4px" }}
+                onClick={async () => {
+                  try {
+                    const ethereum = (window as unknown as { ethereum?: { request: (args: unknown) => Promise<unknown> } }).ethereum;
+                    if (ethereum) {
+                      await ethereum.request({
+                        method: "wallet_addEthereumChain",
+                        params: [
+                          {
+                            chainId: "0x13882",
+                            chainName: "Polygon Amoy Testnet",
+                            nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
+                            rpcUrls: [
+                              "https://polygon-amoy.g.alchemy.com/v2/75_3FkknbchD8uZ0ZQSoP",
+                              "https://polygon-amoy-bor-rpc.publicnode.com",
+                            ],
+                            blockExplorerUrls: ["https://amoy.polygonscan.com"],
+                          },
+                        ],
+                      });
+                      setError("");
+                      setMessage("MetaMask successfully updated to high-speed Alchemy RPC!");
+                    }
+                  } catch (rpcErr) {
+                    console.error("Failed to auto-configure RPC:", rpcErr);
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>bolt</span>
+                <span>⚡ 1-Click: Auto-Configure MetaMask with Working Alchemy RPC</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
