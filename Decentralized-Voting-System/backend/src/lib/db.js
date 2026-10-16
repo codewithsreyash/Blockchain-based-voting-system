@@ -1,3 +1,10 @@
+const dns = require("dns");
+try {
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+} catch {
+  // Ignore if custom dns servers cannot be configured
+}
+
 const mongoose = require("mongoose");
 const {
   mongodbUri,
@@ -5,6 +12,31 @@ const {
   mongodbSocketTimeoutMs,
 } = require("../config/env");
 const { ensureElectionIndexes } = require("../models/Election");
+
+async function ensureDefaultAdmin() {
+  try {
+    const User = require("../models/User");
+    const adminCount = await User.countDocuments({ role: "admin" });
+    if (adminCount === 0) {
+      const bcrypt = require("bcryptjs");
+      const seedEmail = (process.env.ADMIN_SEED_EMAIL || "admin@gmail.com").toLowerCase();
+      const seedPassword = process.env.ADMIN_SEED_PASSWORD || "admin123";
+      const seedName = process.env.ADMIN_SEED_NAME || "Election Commissioner";
+      const passwordHash = await bcrypt.hash(seedPassword, 12);
+      await User.create({
+        fullName: seedName,
+        email: seedEmail,
+        passwordHash,
+        role: "admin",
+        verificationStatus: "verified",
+        walletAddress: "0xF2fCc12dc899e4Af03E79Fa467f77De073ed58cd",
+      });
+      console.log(`Auto-seeded initial admin user for ${seedEmail}`);
+    }
+  } catch (err) {
+    console.warn("Notice: could not auto-seed admin user:", err.message);
+  }
+}
 
 let listenersRegistered = false;
 let connectionPromise = null;
@@ -76,8 +108,9 @@ async function connectToDatabase() {
 
     try {
       await ensureElectionIndexes();
+      await ensureDefaultAdmin();
     } catch (indexError) {
-      console.warn("Notice: could not ensure election indexes:", indexError.message);
+      console.warn("Notice: could not ensure election indexes or default admin:", indexError.message);
     }
 
     return mongoose.connection;
