@@ -8,7 +8,13 @@ import type { ElectionResults } from "../../lib/types";
 import { useAppNetwork } from "../../providers/network-provider";
 
 function toReadableDate(timestamp: number) {
-  return new Date(timestamp * 1000).toLocaleString();
+  return new Date(timestamp * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatPercentage(percentage: number) {
@@ -35,9 +41,7 @@ export function ElectionResultsView() {
     api
       .getElectionResults(electionId)
       .then((response) => {
-        if (active) {
-          setResults(response);
-        }
+        if (active) setResults(response);
       })
       .catch((resultsError) => {
         if (active) {
@@ -45,9 +49,7 @@ export function ElectionResultsView() {
         }
       })
       .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       });
 
     return () => {
@@ -59,99 +61,162 @@ export function ElectionResultsView() {
     !results || results.totalVotes === 0
       ? "No votes were cast in this election."
       : results.hasTie
-        ? `Tie between ${results.winners.map((candidate) => candidate.name).join(", ")}`
-        : `Winner: ${results.winners[0]?.name}`;
+      ? `Tie between ${results.winners.map((candidate) => candidate.name).join(", ")}`
+      : `Winner: ${results.winners[0]?.name}`;
 
   return (
     <div className="stack-xl">
-      <Link className="nav-link back-link" href="/elections">
-        Back to Elections
-      </Link>
+      <div className="row-between">
+        <Link className="button secondary sm" href="/elections">
+          <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>arrow_back</span>
+          <span>Back to Elections Feed</span>
+        </Link>
+        <span className="eyebrow">Cryptographic Tally Audit</span>
+      </div>
 
-      {loading ? (
+      {loading && (
         <section className="panel">
-          <p className="eyebrow">Results Dashboard</p>
-          <h1>Loading final tally...</h1>
-          <p className="muted">Fetching the official candidate counts from the blockchain.</p>
+          <div className="eyebrow">Auditing Smart Contract</div>
+          <h2>Loading election tally...</h2>
+          <p style={{ color: "var(--ink-muted)" }}>Reading immutable vote counts from {activeNetwork.label}...</p>
         </section>
-      ) : null}
+      )}
 
-      {!loading && error ? (
+      {!loading && error && (
         <section className="panel">
-          <p className="eyebrow">Results Dashboard</p>
-          <h1>Results unavailable</h1>
-          <p className="message error">{error}</p>
-          <p className="muted">Results are only released after the election has fully closed.</p>
+          <div className="eyebrow">Audit Status</div>
+          <h2>Results Unavailable</h2>
+          <div className="message error">
+            <span className="material-symbols-outlined">error</span>
+            <span>{error}</span>
+          </div>
+          <p style={{ color: "var(--ink-muted)", fontSize: "14px" }}>
+            Official results are published after the election voting window has closed.
+          </p>
         </section>
-      ) : null}
+      )}
 
-      {!loading && results ? (
+      {!loading && results && (
         <>
           <section className="panel hero-panel">
-            <p className="eyebrow">Final Results</p>
-            <h1>{results.election.title}</h1>
-            <p className="muted">{results.election.description}</p>
-            <p className="message">Reading final tally from {activeNetwork.label}.</p>
+            <div className="row-between">
+              <span className="eyebrow">Official Ballot #{results.election.id} Result</span>
+              <span className="badge badge-verified">ON-CHAIN CONSENSUS VERIFIED</span>
+            </div>
 
-            <div className="stats-grid">
-              <div className="info-card">
-                <span>Total Votes</span>
-                <strong>{results.totalVotes}</strong>
+            <h1 style={{ fontSize: "2.2rem" }}>{results.election.title}</h1>
+            <p style={{ color: "var(--ink-secondary)", fontSize: "15px" }}>{results.election.description}</p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: "12px",
+                padding: "16px",
+                background: "var(--surface-low)",
+                borderRadius: "var(--radius-lg)",
+                border: "1px solid var(--border-hairline)",
+              }}
+            >
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--ink-muted)", fontWeight: 700 }}>
+                  Total Ballots Cast
+                </span>
+                <h2 style={{ color: "var(--primary-amber)", marginTop: "2px" }}>{results.totalVotes}</h2>
               </div>
-              <div className="info-card">
-                <span>Eligible Voters</span>
-                <strong>{results.election.eligibleVoters}</strong>
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--ink-muted)", fontWeight: 700 }}>
+                  Eligible Roles
+                </span>
+                <h2 style={{ fontSize: "1.3rem", marginTop: "4px" }}>{results.election.eligibleVoters.toUpperCase()}</h2>
               </div>
-              <div className="info-card">
-                <span>Voting Window</span>
-                <strong>{`${toReadableDate(results.election.startTime)} to ${toReadableDate(results.election.endTime)}`}</strong>
+              <div>
+                <span style={{ fontSize: "11px", textTransform: "uppercase", color: "var(--ink-muted)", fontWeight: 700 }}>
+                  Audit Network
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "6px" }}>
+                  <span className="pulse-dot"></span>
+                  <span style={{ fontFamily: "var(--font-code)", fontSize: "13px", fontWeight: 600 }}>
+                    {activeNetwork.label}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <p className={`message ${results.totalVotes > 0 ? "success" : ""}`}>{winnerSummary}</p>
+            <div className="message success">
+              <span className="material-symbols-outlined">emoji_events</span>
+              <strong>{winnerSummary}</strong>
+            </div>
           </section>
 
           <section className="panel stack-lg">
             <div className="row-between">
               <div>
-                <p className="eyebrow">Candidate Breakdown</p>
-                <h2>Official blockchain tally</h2>
+                <p className="eyebrow">Candidate Standings</p>
+                <h2>Official Candidate Breakdown</h2>
               </div>
-              <span className={`state-chip ${results.hasTie ? "upcoming" : "live"}`}>
-                {results.totalVotes === 0 ? "No Votes" : results.hasTie ? "Tie" : "Winner Decided"}
+              <span className="badge" style={{ background: "var(--surface-container)" }}>
+                {results.totalVotes === 0 ? "NO VOTES" : results.hasTie ? "TIE TALLY" : "DECISIVE QUORUM"}
               </span>
             </div>
 
             <div className="stack-md">
               {results.candidates.map((candidate) => (
-                <article className={`result-card ${candidate.isWinner ? "winner" : ""}`} key={candidate.id}>
+                <article
+                  key={candidate.id}
+                  style={{
+                    padding: "18px 22px",
+                    background: candidate.isWinner ? "var(--secondary-light)" : "var(--surface-low)",
+                    border: `1.5px solid ${candidate.isWinner ? "var(--secondary-container)" : "var(--border-hairline)"}`,
+                    borderRadius: "var(--radius-lg)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
                   <div className="row-between">
                     <div>
-                      <h2>{candidate.name}</h2>
-                      <p className="muted">{candidate.isWinner ? "Winning position" : "Final standing"}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <h3 style={{ fontSize: "1.2rem" }}>{candidate.name}</h3>
+                        {candidate.isWinner && (
+                          <span className="badge badge-verified" style={{ fontSize: "10px" }}>
+                            WINNER
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: "12px", color: "var(--ink-muted)", fontFamily: "var(--font-code)" }}>
+                        Candidate ID #{candidate.id}
+                      </span>
                     </div>
-                    <div className="result-metrics">
-                      <strong>{candidate.voteCount} votes</strong>
-                      <span className="muted">{formatPercentage(candidate.percentage)}</span>
+
+                    <div style={{ textAlign: "right" }}>
+                      <strong style={{ fontSize: "1.2rem", fontFamily: "var(--font-code)" }}>
+                        {candidate.voteCount} votes
+                      </strong>
+                      <span style={{ display: "block", fontSize: "12px", color: "var(--ink-muted)", fontFamily: "var(--font-code)" }}>
+                        {formatPercentage(candidate.percentage)}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="result-bar" aria-hidden="true">
+                  {/* Visual vote percentage progress bar */}
+                  <div style={{ width: "100%", height: "8px", background: "var(--surface-container)", borderRadius: "var(--radius-full)", overflow: "hidden" }}>
                     <div
-                      className={`result-bar-fill ${candidate.isWinner ? "winner" : ""}`}
-                      style={{ width: `${candidate.percentage}%` }}
+                      style={{
+                        height: "100%",
+                        width: `${candidate.percentage}%`,
+                        background: candidate.isWinner ? "var(--secondary-emerald)" : "var(--primary-amber)",
+                        borderRadius: "var(--radius-full)",
+                        transition: "width 0.6s ease",
+                      }}
                     />
                   </div>
-
-                  {candidate.isWinner ? (
-                    <p className="message success">{results.hasTie ? "Tie winner" : "Election winner"}</p>
-                  ) : null}
                 </article>
               ))}
             </div>
           </section>
         </>
-      ) : null}
+      )}
     </div>
   );
 }

@@ -1,50 +1,33 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { AppProviders } from "../providers/app-providers";
-import { NetworkToggle } from "../components/navigation/NetworkToggle";
+import { Header } from "../components/navigation/Header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DVA Campus Voting",
-  description: "Role-based Web3 voting for a college campus",
+  title: "Campus Governance Network | Decentralized Voting System",
+  description: "Role-aware Web3 cryptographic voting platform for university students, faculty, and administrators",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+          rel="stylesheet"
+        />
+      </head>
       <body>
         <AppProviders>
           <main>
-            <header className="shell-header">
-              <div className="brand">
-                <small>Decentralized Voting</small>
-                <h2>Campus Governance Network</h2>
-              </div>
-
-              <div className="header-actions">
-                <nav className="nav-row">
-                  <Link className="nav-link" href="/login">
-                    Login
-                  </Link>
-                  <Link className="nav-link" href="/signup">
-                    Sign Up
-                  </Link>
-                  <Link className="nav-link" href="/wallet">
-                    Wallet
-                  </Link>
-                  <Link className="nav-link" href="/elections">
-                    Elections
-                  </Link>
-                  <Link className="nav-link" href="/admin/verifications">
-                    Admin
-                  </Link>
-                </nav>
-
-                <NetworkToggle />
-              </div>
-            </header>
-
+            <Header />
             {children}
           </main>
         </AppProviders>

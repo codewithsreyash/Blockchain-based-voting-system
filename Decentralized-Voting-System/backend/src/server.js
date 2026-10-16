@@ -39,19 +39,38 @@ async function shutdown(signal, exitCode = 0) {
 }
 
 async function startServer() {
-  await initializeContractAccess();
-  await connectToDatabase();
+  try {
+    await initializeContractAccess();
+  } catch (error) {
+    console.error("Non-fatal: contract initialization error:", error.message);
+  }
+
+  try {
+    await connectToDatabase();
+  } catch (error) {
+    console.error("Non-fatal: database connection error:", error.message);
+  }
 
   server = app.listen(port, () => {
-    const amoyAccess = getContractContext(NETWORK_KEYS.AMOY);
-    const localDemoAccess = getContractContext(NETWORK_KEYS.LOCAL);
     console.log(`Backend API listening on port ${port} (${nodeEnv})`);
-    console.log(
-      `Amoy backend signer is authorized for contract ${amoyAccess.contractAddress} on chain ${amoyAccess.chainId}`
-    );
-    console.log(
-      `Demo mode is running on contract ${localDemoAccess.contractAddress} through local RPC ${localDemoAccess.rpcUrl}`
-    );
+
+    try {
+      const amoyAccess = getContractContext(NETWORK_KEYS.AMOY);
+      console.log(
+        `Polygon Amoy signer is authorized for contract ${amoyAccess.contractAddress} on chain ${amoyAccess.chainId}`
+      );
+    } catch {
+      console.log("Polygon Amoy context not yet initialized or waiting for network.");
+    }
+
+    try {
+      const localDemoAccess = getContractContext(NETWORK_KEYS.LOCAL);
+      console.log(
+        `Demo mode is running on contract ${localDemoAccess.contractAddress} through local RPC ${localDemoAccess.rpcUrl}`
+      );
+    } catch {
+      console.log("Demo Hardhat context will initialize on-demand when requested.");
+    }
   });
 }
 

@@ -145,11 +145,28 @@ async function request<T>(path: string, init: RequestInit = {}, options?: { netw
   }
 
   const requestPath = options?.networkAware ? withSelectedNetwork(path) : path;
-  const response = await fetch(`${getConfiguredApiBaseUrl()}${requestPath}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    response = await fetch(`${getConfiguredApiBaseUrl()}${requestPath}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: init.signal || controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (networkError: unknown) {
+    const err = networkError as Error;
+    if (err?.name === "AbortError") {
+      throw new ApiError(
+        "Backend request timed out. If the service is on free tier (Render), it may take ~45s to wake up from sleep. Please try again in a moment."
+      );
+    }
+    throw new ApiError(
+      `Unable to reach backend service (${getConfiguredApiBaseUrl()}). Please verify server is online.`
+    );
+  }
 
   const payload = await response.json().catch(() => ({}));
 

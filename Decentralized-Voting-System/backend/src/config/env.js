@@ -31,6 +31,10 @@ const requiredVariables = [
   "ADMIN_PRIVATE_KEY",
 ];
 
+if (!process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/dva";
+}
+
 for (const variableName of requiredVariables) {
   if (!process.env[variableName]) {
     throw new Error(`Missing required environment variable: ${variableName}`);
@@ -39,15 +43,31 @@ for (const variableName of requiredVariables) {
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "";
-const allowedCorsOrigins = Array.from(
-  new Set([
-    ...parseOrigins(frontendUrl).map(normalizeOrigin),
-    ...(nodeEnv === "development" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []).map(normalizeOrigin),
-  ])
-);
+const configuredOrigins = parseOrigins(frontendUrl).map(normalizeOrigin);
 
-if (nodeEnv === "production" && allowedCorsOrigins.length === 0) {
-  throw new Error("Missing FRONTEND_URL environment variable for production CORS configuration.");
+const defaultOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://blockchain-based-voting-system-weld.vercel.app",
+].map(normalizeOrigin);
+
+const allowedCorsOrigins = Array.from(new Set([...configuredOrigins, ...defaultOrigins]));
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;
+  try {
+    const parsed = new URL(origin);
+    const normalized = parsed.origin;
+    if (allowedCorsOrigins.includes(normalized)) return true;
+    // Allow any Vercel deployment preview / branch URL for this project
+    if (parsed.hostname.endsWith(".vercel.app") || parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") {
+      return true;
+    }
+  } catch {
+    // If not a standard URL, fallback to direct string check
+    if (allowedCorsOrigins.includes(origin)) return true;
+  }
+  return false;
 }
 
 module.exports = {
@@ -60,6 +80,7 @@ module.exports = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   frontendUrl,
   allowedCorsOrigins,
+  isOriginAllowed,
   rpcUrl: process.env.RPC_URL,
   chainId: parseNumber(process.env.CHAIN_ID, 80002),
   contractAddress: process.env.CONTRACT_ADDRESS,

@@ -1,45 +1,41 @@
 "use client";
 
-import type { AppNetwork } from "../../lib/types";
 import { useAppNetwork } from "../../providers/network-provider";
 
-const networkOrder: AppNetwork[] = ["amoy", "local"];
-
 export function NetworkToggle() {
-  const { activeNetwork, isLoadingNetworks, networks, selectedNetwork, setSelectedNetwork } = useAppNetwork();
+  const { activeNetwork, isLoadingNetworks, selectedNetwork, setSelectedNetwork } = useAppNetwork();
 
   return (
     <div className="network-switcher">
-      <div className="row-between">
-        <span className="section-label">Network</span>
-        <span className={`state-chip ${selectedNetwork === "local" ? "upcoming" : "live"}`}>
-          {selectedNetwork === "local" ? "Demo Mode" : "Production"}
-        </span>
+      <div className="network-mode-label">
+        <span className="network-mode-title">Network</span>
+        <div className="network-live-status">
+          <span className={`pulse-dot ${selectedNetwork === "local" ? "amber" : ""}`}></span>
+          <span>{selectedNetwork === "local" ? "Demo Node" : "Active Main"}</span>
+        </div>
       </div>
 
       <div className="pill-row">
-        {networkOrder.map((networkKey) => {
-          const network = networks[networkKey];
+        <button
+          className={`pill ${selectedNetwork === "amoy" ? "active" : ""}`}
+          type="button"
+          onClick={() => setSelectedNetwork("amoy")}
+          title="Polygon Amoy Live Testnet"
+        >
+          <span>Polygon Amoy</span>
+          <span className="pill-badge">Live</span>
+        </button>
 
-          return (
-            <button
-              className={`pill ${selectedNetwork === networkKey ? "active" : ""}`}
-              key={networkKey}
-              type="button"
-              onClick={() => setSelectedNetwork(networkKey)}
-            >
-              <strong>{network.label}</strong>
-              <span className="pill-caption">{network.mode === "demo" ? "Free demo chain" : "Live Amoy contract"}</span>
-            </button>
-          );
-        })}
+        <button
+          className={`pill ${selectedNetwork === "local" ? "active" : ""}`}
+          type="button"
+          onClick={() => setSelectedNetwork("local")}
+          title="Demo Hardhat Chain with Free Demo ETH"
+        >
+          <span>Demo Hardhat</span>
+          <span className="pill-badge">Free ETH</span>
+        </button>
       </div>
-
-      <p className="muted network-note">
-        {isLoadingNetworks
-          ? "Checking backend network status..."
-          : activeNetwork.note || `Contract: ${activeNetwork.contractAddress || "Starting demo deployment..."}`}
-      </p>
     </div>
   );
 }

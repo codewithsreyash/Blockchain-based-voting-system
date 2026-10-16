@@ -28,14 +28,17 @@ export function persistAppNetworkSelection(network: AppNetwork) {
 }
 
 function parseConfiguredApiBaseUrl() {
-  if (!configuredApiBaseUrl) {
-    throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+  if (typeof window !== "undefined") {
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return new URL("http://localhost:4000/api");
+    }
   }
 
+  const urlToParse = configuredApiBaseUrl || "http://localhost:4000/api";
   try {
-    return new URL(configuredApiBaseUrl);
+    return new URL(urlToParse);
   } catch {
-    throw new Error("Invalid NEXT_PUBLIC_API_BASE_URL");
+    return new URL("http://localhost:4000/api");
   }
 }
 

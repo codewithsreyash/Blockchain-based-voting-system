@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Link from "next/link";
 import { ApiError, api } from "../../lib/api";
 import { useAppNetwork } from "../../providers/network-provider";
 
@@ -10,11 +11,9 @@ const minimumDescriptionLength = 10;
 
 function toAbsoluteIsoString(localDateTime: string) {
   const parsedDate = new Date(localDateTime);
-
   if (!Number.isFinite(parsedDate.getTime())) {
     return null;
   }
-
   return parsedDate.toISOString();
 }
 
@@ -118,6 +117,11 @@ export function CreateElectionForm() {
     setCandidateNames((current) => (current.length >= 50 ? current : [...current, emptyCandidate]));
   }
 
+  function removeCandidate(index: number) {
+    if (candidateNames.length <= 2) return;
+    setCandidateNames((current) => current.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
@@ -152,8 +156,8 @@ export function CreateElectionForm() {
 
       setMessage(
         response.electionId
-          ? `Election #${response.electionId} created successfully on ${activeNetwork.label}.`
-          : `Election created successfully on ${activeNetwork.label}.`
+          ? `Election #${response.electionId} created successfully on ${activeNetwork.label}!`
+          : `Election created and published on ${activeNetwork.label}!`
       );
       setTitle("");
       setDescription("");
@@ -170,91 +174,195 @@ export function CreateElectionForm() {
   }
 
   return (
-    <div className="panel">
-      <p className="eyebrow">Election Composer</p>
-      <h1>Create a role-aware election</h1>
-      <p className="muted">
-        Choose which campus roles are eligible before publishing the election to the contract.
-      </p>
-      <p className="message">
-        Publishing to <strong>{activeNetwork.label}</strong>
-        {isDemoMode ? " with the backend's free demo signer." : " with the Amoy backend signer."}
-      </p>
+    <div className="panel" style={{ maxWidth: "780px", margin: "0 auto" }}>
+      {/* Eyebrow */}
+      <div className="row-between">
+        <div className="eyebrow">
+          <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add_task</span>
+          <span>Ballot Composer · On-Chain Governance</span>
+        </div>
+        <Link className="button secondary sm" href="/admin/verifications">
+          <span>Back to Verifications</span>
+        </Link>
+      </div>
+
+      <div className="panel-header">
+        <h1 className="panel-title">Publish a role-restricted election</h1>
+        <p className="panel-subtitle">
+          Specify eligible collegiate constituencies before submitting the proposal to the smart contract. Rules are immutably enforced on-chain.
+        </p>
+      </div>
+
+      <div className="telemetry-box">
+        <div className="telemetry-icon-wrap" style={{ background: "var(--primary-fixed)", color: "var(--on-primary-fixed)" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>token</span>
+        </div>
+        <div className="telemetry-content">
+          <span className="telemetry-title">Publishing Target: {activeNetwork.label}</span>
+          <span className="telemetry-desc">
+            {isDemoMode
+              ? "Free demo signer deploy directly into embedded Hardhat RPC"
+              : "Amoy backend signer writes election configuration into verified contract"}
+          </span>
+        </div>
+      </div>
 
       <form className="stack-lg" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Election title</span>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} required />
-        </label>
+        {/* Title */}
+        <div className="field">
+          <label htmlFor="electionTitle">Election Title</label>
+          <div className="input-container">
+            <span className="material-symbols-outlined input-icon">edit</span>
+            <input
+              id="electionTitle"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="e.g. Student Union Executive Council 2026–2027"
+              required
+            />
+          </div>
+        </div>
 
-        <label className="field">
-          <span>Description</span>
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={4} required />
-        </label>
+        {/* Description */}
+        <div className="field">
+          <label htmlFor="electionDesc">Election Description &amp; Constitutional Charter</label>
+          <textarea
+            id="electionDesc"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Outline the governance mandates, quorum requirements, and key voting rules..."
+            rows={4}
+            required
+          />
+        </div>
 
-        <label className="field">
-          <span>Eligible voters</span>
-          <select
-            value={eligibleVoters}
-            onChange={(event) => setEligibleVoters(event.target.value as "students" | "teachers" | "both")}
-          >
-            <option value="students">Only students</option>
-            <option value="teachers">Only teachers</option>
-            <option value="both">Both students and teachers</option>
-          </select>
-        </label>
+        {/* Role Eligibility Selector */}
+        <div className="field">
+          <label>Eligible Constituency</label>
+          <div className="role-switcher-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+            <button
+              type="button"
+              className={`role-tab-btn ${eligibleVoters === "students" ? "active" : ""}`}
+              onClick={() => setEligibleVoters("students")}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>school</span>
+              <span>Students Only</span>
+            </button>
+            <button
+              type="button"
+              className={`role-tab-btn ${eligibleVoters === "teachers" ? "active" : ""}`}
+              onClick={() => setEligibleVoters("teachers")}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>history_edu</span>
+              <span>Faculty Only</span>
+            </button>
+            <button
+              type="button"
+              className={`role-tab-btn ${eligibleVoters === "both" ? "active" : ""}`}
+              onClick={() => setEligibleVoters("both")}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>groups</span>
+              <span>All Campus</span>
+            </button>
+          </div>
+        </div>
 
+        {/* Dynamic Candidates List */}
         <div className="stack-md">
           <div className="row-between">
-            <span className="section-label">Candidates</span>
-            <button className="button secondary" type="button" onClick={addCandidate} disabled={candidateNames.length >= 50}>
-              Add candidate
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--ink-primary)" }}>
+              Ballot Candidates / Slates ({candidateNames.length})
+            </span>
+            <button
+              className="button secondary sm"
+              type="button"
+              onClick={addCandidate}
+              disabled={candidateNames.length >= 50}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add</span>
+              <span>Add Candidate</span>
             </button>
           </div>
 
           {candidateNames.map((candidateName, index) => (
-            <label className="field" key={`candidate-${index}`}>
-              <span>Candidate {index + 1}</span>
-              <input
-                value={candidateName}
-                onChange={(event) => updateCandidate(index, event.target.value)}
-                placeholder="Candidate name"
-                required
-              />
-            </label>
+            <div key={`candidate-${index}`} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div className="input-container" style={{ flex: 1 }}>
+                <span className="material-symbols-outlined input-icon">person</span>
+                <input
+                  value={candidateName}
+                  onChange={(event) => updateCandidate(index, event.target.value)}
+                  placeholder={`Candidate #${index + 1} Slate / Representative Name`}
+                  required
+                />
+              </div>
+              {candidateNames.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => removeCandidate(index)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--danger-red)",
+                    padding: "8px",
+                  }}
+                  title="Remove candidate"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span>
+                </button>
+              )}
+            </div>
           ))}
         </div>
 
+        {/* Voting Window */}
         <div className="two-column">
-          <label className="field">
-            <span>Start time</span>
+          <div className="field">
+            <label htmlFor="startTime">Start Date &amp; Time</label>
             <input
+              id="startTime"
               type="datetime-local"
               value={startTime}
               onChange={(event) => setStartTime(event.target.value)}
               required
             />
-          </label>
+          </div>
 
-          <label className="field">
-            <span>End time</span>
-            <input type="datetime-local" value={endTime} onChange={(event) => setEndTime(event.target.value)} required />
-          </label>
+          <div className="field">
+            <label htmlFor="endTime">End Date &amp; Time</label>
+            <input
+              id="endTime"
+              type="datetime-local"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              required
+            />
+          </div>
         </div>
 
-        {message ? <p className="message success">{message}</p> : null}
-        {errors.length > 0 ? (
+        {message && (
+          <div className="message success">
+            <span className="material-symbols-outlined">check_circle</span>
+            <span>{message}</span>
+          </div>
+        )}
+
+        {errors.length > 0 && (
           <div className="stack-sm">
             {errors.map((errorMessage) => (
-              <p className="message error" key={errorMessage}>
-                {errorMessage}
-              </p>
+              <div className="message error" key={errorMessage}>
+                <span className="material-symbols-outlined">error</span>
+                <span>{errorMessage}</span>
+              </div>
             ))}
           </div>
-        ) : null}
+        )}
 
-        <button className="button" type="submit" disabled={submitting}>
-          {submitting ? "Publishing election..." : "Create election"}
+        <button className="button" type="submit" disabled={submitting} style={{ width: "100%", padding: "14px" }}>
+          <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+            {submitting ? "sync" : "publish"}
+          </span>
+          <span>{submitting ? "Deploying Ballot to Smart Contract..." : "Deploy Election on Chain"}</span>
         </button>
       </form>
     </div>

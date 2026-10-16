@@ -420,10 +420,22 @@ async function ensureLocalDemoContextReady() {
 }
 
 async function initializeContractAccess() {
-  const amoyContext = await initializeAmoyContext();
-  contractContexts.set(NETWORK_KEYS.AMOY, amoyContext);
+  try {
+    const amoyContext = await initializeAmoyContext();
+    contractContexts.set(NETWORK_KEYS.AMOY, amoyContext);
+    console.log(`Polygon Amoy initialized for contract ${amoyContext.contractAddress} on chain ${amoyContext.chainId}`);
+  } catch (amoyError) {
+    console.error("Warning: Failed to initialize Polygon Amoy contract access:", amoyError.message);
+  }
 
-  await ensureLocalDemoContextReady();
+  const { nodeEnv } = require("../config/env");
+  if (nodeEnv !== "production") {
+    try {
+      await ensureLocalDemoContextReady();
+    } catch (demoError) {
+      console.warn("Notice: Local Demo node will be initialized on-demand:", demoError.message);
+    }
+  }
 
   return getNetworkCatalog();
 }

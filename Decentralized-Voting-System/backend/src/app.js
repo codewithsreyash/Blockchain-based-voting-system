@@ -2,14 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
 const { ZodError } = require("zod");
-const { allowedCorsOrigins } = require("./config/env");
+const { allowedCorsOrigins, isOriginAllowed, nodeEnv, chainId, contractAddress } = require("./config/env");
+const { isDatabaseConnected, requireDatabaseConnection } = require("./lib/db");
 const authRoutes = require("./routes/auth.routes");
 const usersRoutes = require("./routes/users.routes");
 const adminRoutes = require("./routes/admin.routes");
 const electionsRoutes = require("./routes/elections.routes");
 const networksRoutes = require("./routes/networks.routes");
 const { asyncHandler } = require("./utils/asyncHandler");
-const { forwardLocalDemoRpcRequest } = require("./lib/contract");
+const { forwardLocalDemoRpcRequest, getContractContext, NETWORK_KEYS } = require("./lib/contract");
 
 const app = express();
 app.set("trust proxy", true);
@@ -47,11 +48,10 @@ function logRpcBridgeErrors(methodLabels, payload) {
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedCorsOrigins.includes(origin)) {
+      if (isOriginAllowed(origin)) {
         return callback(null, true);
       }
-
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+      return callback(null, false);
     },
     allowedHeaders: ["Authorization", "Content-Type"],
     credentials: true,
@@ -62,13 +62,35 @@ app.use(express.json({ limit: "1mb" }));
 app.use(morgan("dev"));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  let amoyStatus = "unknown";
+  try {
+    const amoy = getContractContext(NETWORK_KEYS.AMOY);
+    amoyStatus = amoy ? "ready" : "pending";
+  } catch {
+    amoyStatus = "not_ready";
+  }
+
+  res.json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    environment: nodeEnv,
+    database: {
+      connected: isDatabaseConnected(),
+    },
+    blockchain: {
+      network: "Polygon Amoy",
+      chainId,
+      contractAddress,
+      status: amoyStatus,
+    },
+  });
 });
 
 app.use("/api/networks", networksRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/users", usersRoutes);
-app.use("/api/admin", adminRoutes);
+app.use("/api/auth", requireDatabaseConnection, authRoutes);
+app.use("/api/users", requireDatabaseConnection, usersRoutes);
+app.use("/api/admin", requireDatabaseConnection, adminRoutes);
 app.use("/api/elections", electionsRoutes);
 app.post(
   "/rpc/local",
