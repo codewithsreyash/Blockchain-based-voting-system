@@ -1,0 +1,36 @@
+# Environment variables and secrets - NEVER COMMIT
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+!.env.example
+!.env.local.example
+!**/.env.example
+!**/.env.local.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+package-lock.json.bak
+
+# Next.js and build outputs
+.next/
+**/.next/
+out/
+build/
+dist/
+coverage/
+
+# Logs and cache
+*.log
+*.tsbuildinfo
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
